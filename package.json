@@ -1,0 +1,36 @@
+{
+  "name": "langgraph-agent",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "watch": "tsc --watch",
+    "build": "tsc && chmod 755 ./build/server.js",
+    "dev": "npm run build && nodemon --watch 'src/**/*.ts' --exec 'node' ./build/server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@langchain/community": "^0.3.45",
+    "@langchain/core": "^0.3.57",
+    "@langchain/groq": "^0.2.2",
+    "@langchain/langgraph": "^0.2.74",
+    "@langchain/langgraph-checkpoint-postgres": "^0.0.5",
+    "@langchain/openai": "^0.5.11",
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "nodemon": "^3.1.10",
+    "pg": "^8.16.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.18",
+    "@types/express": "^5.0.2",
+    "@types/node": "^22.15.29",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}
