@@ -140,26 +140,18 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
       throw new Error("Invalid task or team member");
     }
 
-    const agent = this.teamAgents.get(member.role);
+    // Use direct model streaming instead of agent for better control
     const systemPrompt = this.buildTeamMemberPrompt(
       member,
       task,
       projectContext
     );
 
-    // Ensure thread_id is properly formatted and not null
-    const threadId = `${sessionId}_${agentRole.replace(/\s+/g, "_")}_${taskId}`;
-
-    const response = await agent.stream(
-      {
-        messages: [new SystemMessage(systemPrompt), new HumanMessage(message)],
-      },
-      {
-        configurable: {
-          thread_id: threadId,
-        },
-      }
-    );
+    // Stream directly from the model for better chunk control
+    const response = await this.model.stream([
+      new SystemMessage(systemPrompt),
+      new HumanMessage(message),
+    ]);
 
     return this.streamResponse(response);
   }
@@ -223,16 +215,20 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
 
   private async *streamResponse(response: any): AsyncIterable<string> {
     try {
-      for await (const event of response) {
-        // Handle both LangChain and direct LLM streaming formats
-        const content =
-          event?.content ||
-          event?.data?.content ||
-          event?.messages?.[0]?.content ||
-          JSON.stringify(event);
+      for await (const chunk of response) {
+        // Extract the actual content from the LangChain message chunk
+        let content = "";
 
-        console.log("Yielding chunk:", content); // Debug logging
-        yield content;
+        if (chunk && chunk.content) {
+          content = chunk.content;
+        } else if (typeof chunk === "string") {
+          content = chunk;
+        }
+
+        if (content && content.trim()) {
+          console.log("Yielding chunk:", content); // Debug logging
+          yield content;
+        }
       }
     } catch (error: any) {
       console.error("Stream error:", error);
