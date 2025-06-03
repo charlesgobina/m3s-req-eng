@@ -17,9 +17,7 @@ export class AgentService {
   private learningTasks: LearningTask[];
 
   constructor() {
-    const DB_URI =
-      process.env.DATABASE_URL ||
-      "postgresql://postgres:rtx2080ti.@db.honqcsubhfxhcxexhane.supabase.co:5432/postgres";
+    const DB_URI = process.env.DATABASE_URL
 
     this.checkpointer = new MemorySaver();
     this.model = new ChatGroq({
