@@ -9,6 +9,7 @@ dotenv.config();
 
 export class AgentService {
   private checkpointer: MemorySaver;
+  // private postgresCheckpointer: PostgresSaver | null = null;
   private model: ChatGroq;
   private teamAgents!: Map<string, any>;
   private validationAgent: any;
@@ -20,6 +21,7 @@ export class AgentService {
     const DB_URI = process.env.DATABASE_URL
 
     this.checkpointer = new MemorySaver();
+    // this.postgresCheckpointer = new PostgresSaver(this.postgresCheckpointer)
     this.model = new ChatGroq({
       model: "gemma2-9b-it",
       temperature: 0.7,
