@@ -14,6 +14,7 @@ export class ChatController {
       const {
         message,
         taskId,
+        subtask,
         sessionId,
         agentRole,
         projectContext,
@@ -54,6 +55,7 @@ export class ChatController {
       const responseStream = await this.agentService.chatWithAgent(
         message,
         taskId,
+        subtask!,
         selectedAgent,
         sessionId,
         projectContext

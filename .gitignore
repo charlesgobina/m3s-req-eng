@@ -3,3 +3,5 @@ node_modules
 rally.*
 backup*
 .env
+forClaude.ts
+stategraph.ts
