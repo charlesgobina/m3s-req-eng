@@ -470,3 +470,87 @@ const campusDiningRETasks = [
 
 // Export for use in platform
 export default campusDiningRETasks;
+
+
+// {
+//             id: "stakeholder_analysis",
+//             name: "Stakeholder Analysis & Prioritization",
+//             description:
+//               "Analyze stakeholder characteristics, needs, influence levels, and potential conflicts",
+//             objective:
+//               "Understand stakeholder power dynamics and prioritize engagement strategies",
+//             expectedOutcomes: [
+//               {
+//                 id: "stakeholder_power_dynamics",
+//                 outcome: "Stakeholder power dynamics",
+//                 description: "Understanding of how stakeholder power influences project outcomes",
+//                 isCompleted: false,
+//                 studentResponse: ""
+//               },
+//               {
+//                 id: "engagement_strategies",
+//                 outcome: "Engagement strategies",
+//                 description: "Proposed strategies for engaging with each stakeholder group",
+//                 isCompleted: false,
+//                 studentResponse: ""
+//               }
+//             ],
+//             validationCriteria: [
+//               "Accurately assesses stakeholder influence levels",
+//               "Identifies potential conflicts between stakeholders",
+//               "Proposes appropriate engagement strategies",
+//               "Considers stakeholder availability and expertise",
+//             ],
+//             deliverables: ["Stakeholder analysis report", "Engagement plan"],
+//             estimatedTime: "3-4 hours",
+//             difficulty: "Intermediate",
+//             primaryAgent: "Business Analyst",
+//           },
+//           {
+//             id: "persona_development",
+//             name: "User Persona Development",
+//             description:
+//               "Create detailed user personas based on stakeholder analysis",
+//             objective:
+//               "Learn to create representative user archetypes for requirements elicitation",
+//             expectedOutcomes: [
+//               {
+//                 id: "user_personas",
+//                 outcome: "User personas",
+//                 description: "Detailed profiles of representative users",
+//                 isCompleted: false,
+//                 studentResponse: ""
+//               },
+//               {
+//                 id: "journey_maps",
+//                 outcome: "Journey maps",
+//                 description: "Visual representations of user interactions and experiences",
+//                 isCompleted: false,
+//                 studentResponse: ""
+//               },
+//               {
+//                 id: "pain_points",
+//                 outcome: "Pain points and motivations",
+//                 description: "Identification of user challenges and drivers",
+//                 isCompleted: false,
+//                 studentResponse: ""
+//               },
+//               {
+//                 id: "usage_scenarios",
+//                 outcome: "Usage scenarios",
+//                 description: "Contextual narratives describing user interactions",
+//                 isCompleted: false,
+//                 studentResponse: ""
+//               }
+//             ],
+//             validationCriteria: [
+//               "Personas are based on real stakeholder data",
+//               "Covers diverse user types and needs",
+//               "Includes relevant demographic and behavioral details",
+//               "Clearly articulates user goals and frustrations",
+//             ],
+//             deliverables: ["User persona documents", "Journey maps"],
+//             estimatedTime: "4-5 hours",
+//             difficulty: "Intermediate",
+//             primaryAgent: "UX Researcher",
+//           },
