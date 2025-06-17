@@ -5,8 +5,8 @@ export class ChatController {
     }
     async streamChat(req, res) {
         try {
-            const { message, taskId, subtask, sessionId, agentRole, projectContext, } = req.body;
-            if (!message || !taskId || !sessionId || !projectContext) {
+            const { message, taskId, subtask, step, sessionId, agentRole, projectContext, } = req.body;
+            if (!message || !taskId || !sessionId || !projectContext || !step) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
             // Set up SSE headers
@@ -26,7 +26,7 @@ export class ChatController {
             // Start streaming chat response
             res.write(`data: {"type": "response_start", "agent": "${selectedAgent}"}\n\n`);
             // Get the stream
-            const responseStream = await this.agentService.chatWithAgent(message, taskId, subtask, selectedAgent, sessionId, projectContext);
+            const responseStream = await this.agentService.chatWithAgent(message, taskId, subtask, step, selectedAgent, sessionId, projectContext);
             console.log("Starting stream consumption..."); // Debug log
             // Process the stream
             for await (const chunk of responseStream) {
