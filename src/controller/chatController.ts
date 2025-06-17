@@ -15,12 +15,13 @@ export class ChatController {
         message,
         taskId,
         subtask,
+        step,
         sessionId,
         agentRole,
         projectContext,
       }: ChatRequest = req.body;
 
-      if (!message || !taskId || !sessionId || !projectContext) {
+      if (!message || !taskId || !sessionId || !projectContext || !step) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
@@ -56,6 +57,7 @@ export class ChatController {
         message,
         taskId,
         subtask!,
+        step,
         selectedAgent,
         sessionId,
         projectContext

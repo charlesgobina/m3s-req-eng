@@ -12,12 +12,18 @@ export interface Subtask {
   id: string;
   name: string;
   description: string;
+  steps: Steps[];
+  
+}
+
+export interface Steps {
+  id: string;
+  step: string;
   objective: string;
-  expectedOutcomes: string[];
+  isCompleted: boolean;
+  studentResponse: string;
   validationCriteria: string[];
   deliverables: string[];
-  estimatedTime: string;
-  difficulty: string;
   primaryAgent: string;
 }
 
@@ -60,6 +66,7 @@ export interface ChatRequest {
   message: string;
   taskId: string;
   subtask?: Subtask;
+  step: Steps;
   sessionId: string;
   agentRole?: string;
   projectContext: ProjectContext;
@@ -69,6 +76,7 @@ export interface ValidationRequest {
   submission: string;
   taskId: string;
   subtask?: Subtask;
+  step: Steps;
   sessionId: string;
   projectContext: ProjectContext;
 }

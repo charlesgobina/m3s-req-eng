@@ -4,4 +4,4 @@ rally.*
 backup*
 .env
 forClaude.ts
-stategraph.ts
+stategraph*
