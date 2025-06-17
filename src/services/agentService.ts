@@ -11,6 +11,7 @@ import {
   LearningTask,
   TeamMember,
   Subtask,
+  Steps,
 } from "../types/index.js";
 import dotenv from "dotenv";
 dotenv.config();
@@ -217,6 +218,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     message: string,
     taskId: string,
     subtask: Subtask,
+    step: Steps,
     agentRole: string,
     sessionId: string,
     projectContext: ProjectContext
@@ -235,6 +237,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
       member,
       task,
       subtask,
+      step,
       projectContext,
       sessionId
     );
@@ -297,6 +300,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     submission: string,
     taskId: string,
     subTask: Subtask,
+    step: Steps,
     sessionId: string,
     projectContext: ProjectContext
   ): Promise<{
@@ -311,6 +315,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     const systemPrompt = this.buildValidationPrompt(
       task,
       subTask,
+      step,
       projectContext
     );
     const threadId = `${sessionId}_validation_${taskId}`;
@@ -398,6 +403,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     member: TeamMember,
     task: LearningTask,
     subTask: Subtask,
+    step: Steps,
     projectContext: ProjectContext,
     sessionId: string
   ): string {
@@ -431,10 +437,9 @@ CURRENT LEARNING TASK: ${task.name}
 Task Phase: ${task.phase}
 
 AND YOU ARE CURRENTLY WORKING ON:
-SUBTASK: ${subTask.name}
-Subtask Description: ${subTask.description}
-Subtask Objective: ${subTask.objective}
-Expected Outcomes: ${subTask.expectedOutcomes.join(", ")}
+STEP: ${step.step} found in the
+SUBTASK: ${subTask.name} with
+Subtask Description: ${subTask.description} the objective of this step is ${step.objective} and validation criteria are ${step.validationCriteria.join(", ")}
 
 TEAM COLLEAGUES:
 ${this.teamMembers
@@ -451,7 +456,7 @@ INTERACTION GUIDELINES:
    - Only bring up project/task matters when the conversation naturally leads there
 
 2. COLLABORATIVE BRAINSTORMING:
-   - Guide the student through discovery, DON'T GIVE DIRECT ANSWERS for ${subTask.name} but guide them to figure out the following outcomes: ${subTask.expectedOutcomes.join(", ")}
+   - Guide the student through discovery, DON'T GIVE DIRECT ANSWERS for ${step.step} but guide them to accomplish the following objective: ${step.objective}
 
 3. COLLEAGUE REFERRALS:
    - When appropriate, explicitly suggest speaking with specific colleagues
@@ -481,35 +486,26 @@ Remember: You're a real professional helping a colleague learn through collabora
   private buildValidationPrompt(
     task: LearningTask,
     subTask: Subtask,
+    step: Steps,
     projectContext: ProjectContext
   ): string {
-    return `You are an expert Requirements Engineering instructor evaluating student submissions.
+    return `You are an expert Requirements Engineering instructor evaluating student submissions of ${step.step} found in 
 
 CURRENT TASK: ${task.name}
 Task Description: ${task.description}
-Expected Outcomes: ${subTask.expectedOutcomes.join(", ")}
-Validation Criteria: ${subTask.validationCriteria.join(", ")}
+Subtask Name: ${subTask.name}
+Subtask Description: ${subTask.description}
+
+Here is THE ONLY CRITERIA TO evaluate the student's submission: ${step.validationCriteria.join(", ")}. NOTHING MORE, NOTHING LESS.
 
 PROJECT CONTEXT:
 ${projectContext.title}
 ${projectContext.description}
 
-EVALUATION INSTRUCTIONS:
-1. Assess the student's submission against the validation criteria
-2. Provide a score from 0-100 based on:
-   - Completeness (30%)
-   - Accuracy (30%)
-   - Quality (25%)
-   - Understanding demonstrated (15%)
-3. Give constructive feedback highlighting strengths and areas for improvement
-4. If score is below 70, suggest specific improvements
-5. If score is 70 or above, acknowledge good work and suggest optional enhancements
-6. Be encouraging and educational in your feedback
-
 FORMAT YOUR RESPONSE AS:
 SCORE: [0-100]
-FEEDBACK: [Your detailed feedback]
-RECOMMENDATIONS: [Specific suggestions for improvement or next steps]`;
+FEEDBACK: [Your SHORT AND CONCISE detailed feedback]
+RECOMMENDATIONS: [Specific suggestions for improvement IF YOU HAVE ANY or next steps]`;
   }
 
   private getTeamMembers(): TeamMember[] {
@@ -682,139 +678,90 @@ She's methodical and organized, often creating detailed test scenarios and check
             name: "Stakeholder Identification",
             description:
               "Identify all individuals and groups who will be affected by or can influence the system",
-            objective:
-              "Learn to systematically identify primary, secondary, and key stakeholders",
-            expectedOutcomes: [
-              "Comprehensive stakeholder list",
-              "Stakeholder categorization (primary/secondary/key)",
-              "Initial influence-interest matrix",
+            
+            steps: [
+              {
+                id: "comprehensive_stakeholder_list",
+                step: "Comprehensive stakeholder list",
+                objective: "Provide a complete list of all identified stakeholders",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Identifies at least 8 different stakeholder types",
+                ],
+                deliverables: ["Stakeholder register", "Stakeholder map"],
+                primaryAgent: "Stakeholder Analyst",
+              },
+              {
+                id: "stakeholder_categorization",
+                step: "Stakeholder categorization (primary/secondary/key)",
+                objective: "Categorization of stakeholders based on their influence and interest",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Categorizes stakeholders into primary, secondary, and key groups",
+                  "Considers both influence and interest levels",
+                  "Involves relevant stakeholders in the categorization process",
+                ],
+                deliverables: ["Stakeholder categorization report"],
+                primaryAgent: "Stakeholder Analyst",  
+              },
+              {
+                id: "direct_and_indirect_stakeholders",
+                step: "Direct and indirect stakeholders",
+                objective: "Categorization of stakeholders based on their direct or indirect influence on the project",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Creates a preliminary influence-interest matrix",
+                  "Maps at least 5 stakeholders",
+                  "Considers both influence and interest levels",
+                ],
+                deliverables: ["Initial influence-interest matrix"],
+                primaryAgent: "Stakeholder Analyst",
+              }
             ],
-            validationCriteria: [
-              "Identifies at least 8 different stakeholder types",
-              "Covers both direct and indirect stakeholders",
-              "Includes technical and business stakeholders",
-              "Considers external stakeholders (parents, vendors)",
-            ],
-            deliverables: ["Stakeholder register", "Stakeholder map"],
-            estimatedTime: "2-3 hours",
-            difficulty: "Beginner",
-            primaryAgent: "Stakeholder Analyst",
+            
           },
           {
             id: "stakeholder_analysis",
             name: "Stakeholder Analysis & Prioritization",
             description:
               "Analyze stakeholder characteristics, needs, influence levels, and potential conflicts",
-            objective:
-              "Understand stakeholder power dynamics and prioritize engagement strategies",
-            expectedOutcomes: [
-              "Detailed stakeholder profiles",
-              "Power-interest grid",
-              "Engagement strategy matrix",
-              "Conflict identification",
+            
+            steps: [
+              {
+                id: "stakeholder_power_dynamics",
+                step: "Stakeholder power dynamics",
+                objective: "Understanding of how stakeholder power influences project outcomes",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Identifies at least 3 key power dynamics",
+                  "Explains how these dynamics affect project success",
+                  "Considers both positive and negative influences",
+                ],
+                deliverables: ["Power dynamics analysis report"],
+                primaryAgent: "Stakeholder Analyst",
+              },
+              {
+                id: "engagement_strategies",
+                step: "Engagement strategies",
+                objective: "Proposed strategies for engaging with each stakeholder group",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Identifies appropriate engagement strategies for each stakeholder group",
+                  "Considers stakeholder preferences and concerns",
+                  "Involves stakeholders in the development of engagement strategies",
+                ],
+                deliverables: ["Stakeholder engagement plan"],
+                primaryAgent: "Stakeholder Analyst",
+              }
             ],
-            validationCriteria: [
-              "Accurately assesses stakeholder influence levels",
-              "Identifies potential conflicts between stakeholders",
-              "Proposes appropriate engagement strategies",
-              "Considers stakeholder availability and expertise",
-            ],
-            deliverables: ["Stakeholder analysis report", "Engagement plan"],
-            estimatedTime: "3-4 hours",
-            difficulty: "Intermediate",
-            primaryAgent: "Business Analyst",
+            
           },
-          {
-            id: "persona_development",
-            name: "User Persona Development",
-            description:
-              "Create detailed user personas based on stakeholder analysis",
-            objective:
-              "Learn to create representative user archetypes for requirements elicitation",
-            expectedOutcomes: [
-              "3-5 detailed user personas",
-              "User journey maps",
-              "Pain points and motivations",
-              "Usage scenarios",
-            ],
-            validationCriteria: [
-              "Personas are based on real stakeholder data",
-              "Covers diverse user types and needs",
-              "Includes relevant demographic and behavioral details",
-              "Clearly articulates user goals and frustrations",
-            ],
-            deliverables: ["User persona documents", "Journey maps"],
-            estimatedTime: "4-5 hours",
-            difficulty: "Intermediate",
-            primaryAgent: "UX Researcher",
-          },
-        ],
-      },
-      {
-        id: "requirements_elicitation",
-        name: "Requirements Elicitation",
-        description:
-          "Gather detailed requirements from stakeholders using various elicitation techniques",
-        phase: "Requirements Discovery",
-        objective:
-          "Master different requirements elicitation techniques and their appropriate usage",
-        subtasks: [
-          {
-            id: "interview_planning",
-            name: "Interview Planning & Execution",
-            description:
-              "Plan and conduct structured interviews with key stakeholders",
-            objective:
-              "Learn to design effective interview strategies and extract valuable requirements",
-            expectedOutcomes: [
-              "Interview guide templates",
-              "Stakeholder interview sessions",
-              "Raw requirements data",
-              "Interview summaries",
-            ],
-            validationCriteria: [
-              "Develops comprehensive interview guides",
-              "Conducts at least 3 different stakeholder interviews",
-              "Extracts both functional and non-functional requirements",
-              "Documents findings systematically",
-            ],
-            deliverables: [
-              "Interview guides",
-              "Interview transcripts",
-              "Requirements log",
-            ],
-            estimatedTime: "4-6 hours",
-            difficulty: "Intermediate",
-            primaryAgent: "Business Analyst",
-          },
-          {
-            id: "workshop_facilitation",
-            name: "Requirements Workshop Facilitation",
-            description:
-              "Design and facilitate collaborative requirements workshops",
-            objective:
-              "Learn to facilitate group sessions for requirements discovery and validation",
-            expectedOutcomes: [
-              "Workshop agenda and materials",
-              "Facilitated group sessions",
-              "Consensus on key requirements",
-              "Workshop outcomes documentation",
-            ],
-            validationCriteria: [
-              "Creates structured workshop agenda",
-              "Facilitates productive group discussions",
-              "Manages conflicting stakeholder views",
-              "Achieves consensus on priority requirements",
-            ],
-            deliverables: [
-              "Workshop plan",
-              "Session notes",
-              "Requirements consensus document",
-            ],
-            estimatedTime: "5-7 hours",
-            difficulty: "Advanced",
-            primaryAgent: "Requirements Engineer",
-          },
+          
         ],
       },
     ];
