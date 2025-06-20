@@ -5,3 +5,5 @@ backup*
 .env
 forClaude.ts
 stategraph*
+prompt*
+serviceAccount*

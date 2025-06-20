@@ -1,6 +1,6 @@
 # M3Req - Requirements Engineering Learning System
 
-An AI-powered learning platform for requirements engineering education, featuring intelligent agent routing, real-time streaming conversations, and comprehensive stakeholder analysis workflows.
+[An AI-powered learning platform for requirements engineering education, featuring intelligent agent routing, real-time streaming conversations, and comprehensive stakeholder analysis workflows.]
 
 ## 🎯 Project Overview
 
