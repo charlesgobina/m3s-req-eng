@@ -3,6 +3,9 @@ import fbAdmin from 'firebase-admin';
 import { initializeApp } from 'firebase-admin/app';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Auth } from 'firebase-admin/auth';
+import { config } from 'dotenv';
+
+config();
 
 const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 
