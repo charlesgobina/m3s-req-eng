@@ -4,7 +4,22 @@ import { initializeApp } from 'firebase-admin/app';
 import type { Firestore } from 'firebase-admin/firestore';
 import type { Auth } from 'firebase-admin/auth';
 
-const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || '{}');
+const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+
+if (!serviceAccountJson) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON environment variable is not set');
+}
+
+let serviceAccount;
+try {
+    serviceAccount = JSON.parse(serviceAccountJson);
+} catch (error) {
+    throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON contains invalid JSON');
+}
+
+if (!serviceAccount.project_id) {
+    throw new Error('Service account JSON must contain a project_id field');
+}
 
 initializeApp({
     credential: fbAdmin.credential.cert(serviceAccount),
