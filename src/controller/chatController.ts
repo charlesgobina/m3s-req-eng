@@ -18,10 +18,9 @@ export class ChatController {
         step,
         sessionId,
         agentRole,
-        projectContext,
       }: ChatRequest = req.body;
 
-      if (!message || !taskId || !sessionId || !projectContext || !step) {
+      if (!message || !taskId || !sessionId || !step) {
         return res.status(400).json({ error: "Missing required fields" });
       }
 
@@ -40,7 +39,6 @@ export class ChatController {
         selectedAgent = await this.agentService.routeToAgent(
           message,
           taskId,
-          projectContext
         );
         res.write(
           `data: {"type": "agent_selected", "agent": "${selectedAgent}"}\n\n`
@@ -60,7 +58,6 @@ export class ChatController {
         step,
         selectedAgent,
         sessionId,
-        projectContext
       );
 
       console.log("Starting stream consumption..."); // Debug log
