@@ -11,6 +11,7 @@ export interface ProjectContext {
 export interface Subtask {
   id: string;
   name: string;
+  subtaskNumber: number;
   description: string;
   steps: Steps[];
   
@@ -19,6 +20,7 @@ export interface Subtask {
 export interface Steps {
   id: string;
   step: string;
+  stepNumber: number;
   objective: string;
   isCompleted: boolean;
   studentResponse: string;
@@ -30,6 +32,7 @@ export interface Steps {
 export interface LearningTask {
   id: string;
   name: string;
+  taskNumber: number;
   description: string;
   phase: string;
   objective: string;
@@ -45,6 +48,7 @@ export interface TeamMember {
   workApproach: string;
   preferredFrameworks: string[];
   detailedPersona: string;
+  imageUrl?: string;
 }
 
 export interface ChatMessage {
