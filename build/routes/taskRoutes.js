@@ -9,14 +9,37 @@ const taskController = new TaskController(agentService);
 // Initialize auth middleware
 const authService = new AuthService();
 const authMiddleware = new AuthMiddleware(authService);
-// Protected routes
+// Protected routes - PRESERVE ORIGINAL FUNCTIONALITY
 router.get('/', authMiddleware.requireAuth, (req, res) => taskController.getTasks(req, res));
 router.get('/team-members', authMiddleware.requireAuth, (req, res) => taskController.getTeamMembers(req, res));
-// Lecturer-only route for managing tasks ** future implementation **
-router.post('/', authMiddleware.requireLecturer, async (req, res, next) => {
+// Firestore task management routes (using /firestore prefix to avoid conflicts)
+router.post('/firestore', authMiddleware.requireLecturer, async (req, res, next) => {
     try {
-        // Add logic for creating/managing tasks (lecturer only)
-        res.json({ message: 'Task creation endpoint - lecturer only' });
+        await taskController.addTask(req, res);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.get('/firestore/:taskId', authMiddleware.requireAuth, async (req, res, next) => {
+    try {
+        await taskController.getTaskById(req, res);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.put('/firestore/:taskId', authMiddleware.requireLecturer, async (req, res, next) => {
+    try {
+        await taskController.updateTask(req, res);
+    }
+    catch (err) {
+        next(err);
+    }
+});
+router.delete('/firestore/:taskId', authMiddleware.requireLecturer, async (req, res, next) => {
+    try {
+        await taskController.deleteTask(req, res);
     }
     catch (err) {
         next(err);

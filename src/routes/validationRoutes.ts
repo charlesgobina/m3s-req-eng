@@ -13,7 +13,7 @@ const authService = new AuthService();
 const authMiddleware = new AuthMiddleware(authService);
 
 // Student-only validation endpoint
-router.post('/validate', authMiddleware.requireStudent, async (req, res, next) => {
+router.post('/validate', authMiddleware.requireAuth, authMiddleware.requireStudent, async (req, res, next) => {
   try {
     await validationController.validateSubmission(req, res);
   } catch (err) {

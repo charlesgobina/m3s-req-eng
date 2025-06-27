@@ -31,7 +31,6 @@ export class AuthService {
         password: userData.password,
         displayName: `${userData.firstName} ${userData.lastName}`,
       });
-
       // Create user document in Firestore
       const user: User = {
         id: userRecord.uid,
@@ -61,11 +60,44 @@ export class AuthService {
 
   async login(loginData: LoginData): Promise<{ user: User; customToken: string }> {
     try {
-      // Get user by email
-      const userRecord = await auth.getUserByEmail(loginData.email);
+      // Use Firebase Auth REST API to verify email/password
+      const apiKey = process.env.FIREBASE_API_KEY;
+      if (!apiKey) {
+        throw new Error('Firebase API key not configured');
+      }
+
+      const authUrl = `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${apiKey}`;
       
-      // Get user data from Firestore
-      const userDoc = await db.collection('users').doc(userRecord.uid).get();
+      const response = await fetch(authUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: loginData.email,
+          password: loginData.password,
+          returnSecureToken: true,
+        }),
+      });
+
+      const authResult = await response.json();
+
+      if (!response.ok) {
+        // Handle Firebase Auth errors
+        if (authResult.error?.message?.includes('EMAIL_NOT_FOUND')) {
+          throw new Error('user-not-found');
+        }
+        if (authResult.error?.message?.includes('INVALID_PASSWORD')) {
+          throw new Error('wrong-password');
+        }
+        if (authResult.error?.message?.includes('INVALID_LOGIN_CREDENTIALS')) {
+          throw new Error('wrong-password');
+        }
+        throw new Error(authResult.error?.message || 'Authentication failed');
+      }
+
+      // Get user data from Firestore using the verified user ID
+      const userDoc = await db.collection('users').doc(authResult.localId).get();
       
       if (!userDoc.exists) {
         throw new Error('User profile not found');
@@ -73,15 +105,15 @@ export class AuthService {
 
       const userData = userDoc.data();
       const user: User = {
-        id: userRecord.uid,
+        id: authResult.localId,
         firstName: userData!.firstName,
         lastName: userData!.lastName,
         email: userData!.email,
         role: userData!.role,
       };
 
-      // Generate custom token
-      const customToken = await auth.createCustomToken(userRecord.uid);
+      // Generate custom token for the verified user
+      const customToken = await auth.createCustomToken(authResult.localId);
 
       return { user, customToken };
     } catch (error: any) {

@@ -13,12 +13,12 @@ export class ValidationController {
     try {
       const { submission, taskId, subtask, step, sessionId, projectContext }: ValidationRequest = req.body;
 
-      if (!submission || !taskId || !sessionId || !projectContext || !step) {
+      if (!submission || !taskId || !sessionId || !step) {
         return res.status(400).json({ error: 'Missing required fields' });
       } 
 
       const result = await this.agentService.validateSubmission(
-        submission, taskId, subtask!, step, sessionId, projectContext
+        submission, taskId, subtask!, step, sessionId
       );
 
       res.json(result);
