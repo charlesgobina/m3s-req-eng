@@ -14,6 +14,7 @@ export interface Subtask {
   subtaskNumber: number;
   description: string;
   steps: Steps[];
+  isCompleted: boolean;
   
 }
 
@@ -37,6 +38,7 @@ export interface LearningTask {
   phase: string;
   objective: string;
   subtasks: Subtask[];
+  isCompleted: boolean;
 }
 
 export interface TeamMember {
@@ -57,6 +59,25 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   agentRole?: string;
+}
+
+export interface FirestoreChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: any; // Firestore Timestamp
+  agentRole?: string;
+}
+
+export interface ChatDocument {
+  messages: FirestoreChatMessage[];
+  messageCount: number;
+  lastUpdated: any; // Firestore Timestamp
+}
+
+export interface ChatSummary {
+  chatMessageCount: number;
+  lastChatAt: any; // Firestore Timestamp
 }
 
 export interface ValidationResult {

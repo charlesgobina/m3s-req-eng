@@ -383,6 +383,7 @@ REMEMBER: You are a project team member with access ONLY to the specific project
     return [
       {
         id: "home",
+        isCompleted: false,
         taskNumber: 1,
         name: "Home",
         description:
@@ -396,6 +397,7 @@ REMEMBER: You are a project team member with access ONLY to the specific project
 
       {
         id: "stakeholder_identification_analysis",
+        isCompleted: false,
         taskNumber: 2,
         name: "Stakeholder Identification & Analysis",
         description:
@@ -405,6 +407,7 @@ REMEMBER: You are a project team member with access ONLY to the specific project
         subtasks: [
           {
             id: "stakeholder_identification",
+            isCompleted: false,
             subtaskNumber: 1,
             name: "Stakeholder Identification",
             description:
@@ -459,6 +462,7 @@ REMEMBER: You are a project team member with access ONLY to the specific project
           },
           {
             id: "stakeholder_analysis",
+            isCompleted: false,
             subtaskNumber: 2,
             name: "Stakeholder Analysis & Prioritization",
             description:
@@ -501,6 +505,59 @@ REMEMBER: You are a project team member with access ONLY to the specific project
           
         ],
       },
+      {
+        id: "requirements_elicitation",
+        isCompleted: false,
+        taskNumber: 3,
+        name: "Requirements Elicitation",
+        description:
+          "Gather detailed requirements from stakeholders using various elicitation techniques",
+        phase: "Requirements Discovery",
+        objective: "Develop skills in requirements elicitation techniques",
+        subtasks: [
+          {
+            id: "elicitation_techniques",
+            isCompleted: false,
+            subtaskNumber: 1,
+            name: "Elicitation Techniques",
+            description:
+              "Apply various elicitation techniques to gather requirements from stakeholders",
+            steps: [
+              {
+                id: "interviews_and_surveys",
+                stepNumber: 1,
+                step: "Interviews and surveys with stakeholders",
+                objective: "Conduct interviews and surveys to gather requirements",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Conducts at least 3 interviews with different stakeholder groups",
+                  "Designs a survey that gathers diverse requirements",
+                  "Analyzes interview and survey results to identify key requirements",
+                ],
+                deliverables: ["Interview transcripts", "Survey results"],
+                primaryAgent: "Product Owner",
+              },
+              {
+                id: "workshops_and_focus_groups",
+                stepNumber: 2,
+                step: "Workshops and focus groups with stakeholders",
+                objective: "Facilitate workshops and focus groups to gather requirements",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Facilitates at least 2 workshops or focus groups with different stakeholder groups",
+                  "Encourages active participation and idea generation",
+                  "Documents workshop outcomes and key requirements identified",
+                ],
+                deliverables: ["Workshop notes", "Key requirements list"],
+                primaryAgent: "Product Owner",
+              }
+            ],
+          },
+        ],
+
+      }
     ];
   }
 

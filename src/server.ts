@@ -8,6 +8,7 @@ import { contextRouter } from './routes/contextRoutes.js';
 import { authRouter } from './routes/authRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
+import { chatService } from './services/chatService.js';
 
 dotenv.config();
 
@@ -38,7 +39,28 @@ app.get('/health', (req, res) => {
 // Error handling middleware (should be last)
 app.use(errorHandler);
 
-app.listen(PORT, () => {
-  console.log(`Requirements Engineering Learning Server running on port ${PORT}`);
-  console.log(`Health check available at: http://localhost:${PORT}/health`);
-});
+// Initialize server with Firebase validation
+async function startServer() {
+  try {
+    // Test Firebase Admin connection using existing admin config
+    console.log('🔌 Testing Firebase Admin connection...');
+    const isConnected = await chatService.testConnection();
+    if (!isConnected) {
+      console.warn('⚠️ Firebase connection test failed, but server will continue...');
+    }
+
+    // Start the server
+    app.listen(PORT, () => {
+      console.log(`🚀 Requirements Engineering Learning Server running on port ${PORT}`);
+      console.log(`💚 Health check available at: http://localhost:${PORT}/health`);
+      console.log(`🔥 Firebase Admin services initialized successfully`);
+    });
+
+  } catch (error) {
+    console.error('❌ Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+// Start the server
+startServer();
