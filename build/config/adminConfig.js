@@ -1,6 +1,8 @@
 // adminConfig.ts
 import fbAdmin from 'firebase-admin';
 import { initializeApp } from 'firebase-admin/app';
+import { config } from 'dotenv';
+config();
 const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 if (!serviceAccountJson) {
     throw new Error('GOOGLE_SERVICE_ACCOUNT_JSON environment variable is not set');
