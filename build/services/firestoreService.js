@@ -1,26 +1,13 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import dotenv from 'dotenv';
-dotenv.config();
+import { db } from '../config/adminConfig.js';
 class FirestoreService {
-    db;
     constructor() {
-        const firebaseConfig = {
-            apiKey: process.env.FIREBASE_API_KEY,
-            authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-            messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-            appId: process.env.FIREBASE_APP_ID
-        };
-        const app = initializeApp(firebaseConfig);
-        this.db = getFirestore(app);
+        console.log('🔥 FirestoreService: Initialized with Firebase Admin SDK');
     }
     // Add a new task
     async addTask(taskId, task) {
         try {
-            const taskRef = doc(this.db, 'tasks', taskId, 'task', 'data');
-            await setDoc(taskRef, {
+            const taskRef = db.collection('tasks').doc(taskId).collection('task').doc('data');
+            await taskRef.set({
                 ...task,
                 createdAt: new Date(),
                 updatedAt: new Date()
@@ -35,17 +22,17 @@ class FirestoreService {
     // Get a task by ID
     async getTask(taskId) {
         try {
-            const taskRef = doc(this.db, 'tasks', taskId, 'task', 'data');
-            const taskSnap = await getDoc(taskRef);
-            if (taskSnap.exists()) {
+            const taskRef = db.collection('tasks').doc(taskId).collection('task').doc('data');
+            const taskSnap = await taskRef.get();
+            if (taskSnap.exists) {
                 const data = taskSnap.data();
-                // Remove Firestore metadata before returning
-                const { createdAt, updatedAt, ...taskData } = data;
-                return taskData;
+                if (data) {
+                    // Remove Firestore metadata before returning
+                    const { createdAt, updatedAt, ...taskData } = data;
+                    return taskData;
+                }
             }
-            else {
-                return null;
-            }
+            return null;
         }
         catch (error) {
             console.error('Error getting task from Firestore:', error);
@@ -55,8 +42,8 @@ class FirestoreService {
     // Update an existing task
     async updateTask(taskId, task) {
         try {
-            const taskRef = doc(this.db, 'tasks', taskId, 'task', 'data');
-            await updateDoc(taskRef, {
+            const taskRef = db.collection('tasks').doc(taskId).collection('task').doc('data');
+            await taskRef.update({
                 ...task,
                 updatedAt: new Date()
             });
@@ -70,8 +57,8 @@ class FirestoreService {
     // Delete a task
     async deleteTask(taskId) {
         try {
-            const taskRef = doc(this.db, 'tasks', taskId, 'task', 'data');
-            await deleteDoc(taskRef);
+            const taskRef = db.collection('tasks').doc(taskId).collection('task').doc('data');
+            await taskRef.delete();
             console.log(`Task ${taskId} deleted successfully from Firestore`);
         }
         catch (error) {
@@ -82,9 +69,9 @@ class FirestoreService {
     // Check if task exists
     async taskExists(taskId) {
         try {
-            const taskRef = doc(this.db, 'tasks', taskId, 'task', 'data');
-            const taskSnap = await getDoc(taskRef);
-            return taskSnap.exists();
+            const taskRef = db.collection('tasks').doc(taskId).collection('task').doc('data');
+            const taskSnap = await taskRef.get();
+            return taskSnap.exists;
         }
         catch (error) {
             console.error('Error checking task existence:', error);
