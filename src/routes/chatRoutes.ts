@@ -76,7 +76,7 @@ router.delete('/history/:taskId/:subtaskId/:stepId', authMiddleware.requireAuth,
 });
 
 // Test chat service connection (admin only - could add additional auth check)
-router.get('/test', authMiddleware.requireAuth, (req, res) => 
+router.get('/test', (req, res) => 
   chatController.testConnection(req, res)
 );
 

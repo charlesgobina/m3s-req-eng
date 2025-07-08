@@ -10,12 +10,14 @@ export class AuthController {
 
   async signup(req: Request, res: Response) {
     try {
-      const { firstName, lastName, email, password, role }: SignupData = req.body;
+      const { firstName, lastName, email, password, role, courseId }: SignupData = req.body;
+
+      console.log('Signup request received:', { firstName, lastName, email, role, courseId });
 
       // Validate required fields
-      if (!firstName || !lastName || !email || !password || !role) {
+      if (!firstName || !lastName || !email || !password || !role || !courseId) {
         return res.status(400).json({
-          error: 'All fields are required: firstName, lastName, email, password, role'
+          error: 'All fields are required: firstName, lastName, email, password, role, courseId'
         });
       }
 
@@ -46,7 +48,8 @@ export class AuthController {
         lastName,
         email,
         password,
-        role
+        role,
+        courseId // Optional, if user is associated with a course
       });
 
       res.status(201).json({
@@ -115,6 +118,12 @@ export class AuthController {
       if (error.message.includes('wrong-password')) {
         return res.status(401).json({
           error: 'Invalid credentials'
+        });
+      }
+
+      if (error.message.includes('registration-not-approved')) {
+        return res.status(403).json({
+          error: 'Your registration has not been approved yet. Please contact an administrator.'
         });
       }
 

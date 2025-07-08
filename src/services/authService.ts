@@ -7,6 +7,8 @@ export interface User {
   lastName: string;
   email: string;
   role: 'student' | 'lecturer';
+  courseId?: string; // Optional, if user is associated with a course
+  isRegistrationApproved?: boolean; // Only for students
 }
 
 export interface SignupData {
@@ -15,6 +17,7 @@ export interface SignupData {
   email: string;
   password: string;
   role: 'student' | 'lecturer';
+  courseId?: string; // Optional, if user is associated with a course
 }
 
 export interface LoginData {
@@ -38,16 +41,26 @@ export class AuthService {
         lastName: userData.lastName,
         email: userData.email,
         role: userData.role,
+        courseId: userData.courseId, // Optional, if user is associated with a course
       };
 
-      await db.collection('users').doc(userRecord.uid).set({
+      const firestoreData: any = {
         firstName: userData.firstName,
         lastName: userData.lastName,
         email: userData.email,
         role: userData.role,
+        courseId: userData.courseId, // Optional, if user is associated with a course
         createdAt: new Date(),
         updatedAt: new Date(),
-      });
+      };
+
+      // Only add isRegistrationApproved for students
+      if (userData.role === 'student') {
+        user.isRegistrationApproved = false;
+        firestoreData.isRegistrationApproved = false;
+      }
+
+      await db.collection('users').doc(userRecord.uid).set(firestoreData);
 
       // Generate custom token for immediate login
       const customToken = await auth.createCustomToken(userRecord.uid);
@@ -110,7 +123,18 @@ export class AuthService {
         lastName: userData!.lastName,
         email: userData!.email,
         role: userData!.role,
+        courseId: userData!.courseId,
       };
+
+      // Only add isRegistrationApproved for students
+      if (userData!.role === 'student') {
+        user.isRegistrationApproved = userData!.isRegistrationApproved;
+        
+        // Check if student registration is approved
+        if (!user.isRegistrationApproved) {
+          throw new Error('registration-not-approved');
+        }
+      }
 
       // Generate custom token for the verified user
       const customToken = await auth.createCustomToken(authResult.localId);
@@ -133,13 +157,21 @@ export class AuthService {
       }
 
       const userData = userDoc.data();
-      return {
+      const user: User = {
         id: decodedToken.uid,
         firstName: userData!.firstName,
         lastName: userData!.lastName,
         email: userData!.email,
         role: userData!.role,
+        courseId: userData!.courseId,
       };
+
+      // Only add isRegistrationApproved for students
+      if (userData!.role === 'student') {
+        user.isRegistrationApproved = userData!.isRegistrationApproved;
+      }
+
+      return user;
     } catch (error: any) {
       throw new Error(`Token verification failed: ${error.message}`);
     }
@@ -154,13 +186,21 @@ export class AuthService {
       }
 
       const userData = userDoc.data();
-      return {
+      const user: User = {
         id: uid,
         firstName: userData!.firstName,
         lastName: userData!.lastName,
         email: userData!.email,
         role: userData!.role,
+        courseId: userData!.courseId,
       };
+
+      // Only add isRegistrationApproved for students
+      if (userData!.role === 'student') {
+        user.isRegistrationApproved = userData!.isRegistrationApproved;
+      }
+
+      return user;
     } catch (error: any) {
       throw new Error(`Failed to get user: ${error.message}`);
     }
