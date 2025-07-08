@@ -15,15 +15,23 @@ export class AuthService {
                 lastName: userData.lastName,
                 email: userData.email,
                 role: userData.role,
+                courseId: userData.courseId, // Optional, if user is associated with a course
             };
-            await db.collection('users').doc(userRecord.uid).set({
+            const firestoreData = {
                 firstName: userData.firstName,
                 lastName: userData.lastName,
                 email: userData.email,
                 role: userData.role,
+                courseId: userData.courseId, // Optional, if user is associated with a course
                 createdAt: new Date(),
                 updatedAt: new Date(),
-            });
+            };
+            // Only add isRegistrationApproved for students
+            if (userData.role === 'student') {
+                user.isRegistrationApproved = false;
+                firestoreData.isRegistrationApproved = false;
+            }
+            await db.collection('users').doc(userRecord.uid).set(firestoreData);
             // Generate custom token for immediate login
             const customToken = await auth.createCustomToken(userRecord.uid);
             return { user, customToken };
@@ -77,7 +85,16 @@ export class AuthService {
                 lastName: userData.lastName,
                 email: userData.email,
                 role: userData.role,
+                courseId: userData.courseId,
             };
+            // Only add isRegistrationApproved for students
+            if (userData.role === 'student') {
+                user.isRegistrationApproved = userData.isRegistrationApproved;
+                // Check if student registration is approved
+                if (!user.isRegistrationApproved) {
+                    throw new Error('registration-not-approved');
+                }
+            }
             // Generate custom token for the verified user
             const customToken = await auth.createCustomToken(authResult.localId);
             return { user, customToken };
@@ -95,13 +112,19 @@ export class AuthService {
                 throw new Error('User profile not found');
             }
             const userData = userDoc.data();
-            return {
+            const user = {
                 id: decodedToken.uid,
                 firstName: userData.firstName,
                 lastName: userData.lastName,
                 email: userData.email,
                 role: userData.role,
+                courseId: userData.courseId,
             };
+            // Only add isRegistrationApproved for students
+            if (userData.role === 'student') {
+                user.isRegistrationApproved = userData.isRegistrationApproved;
+            }
+            return user;
         }
         catch (error) {
             throw new Error(`Token verification failed: ${error.message}`);
@@ -114,13 +137,19 @@ export class AuthService {
                 return null;
             }
             const userData = userDoc.data();
-            return {
+            const user = {
                 id: uid,
                 firstName: userData.firstName,
                 lastName: userData.lastName,
                 email: userData.email,
                 role: userData.role,
+                courseId: userData.courseId,
             };
+            // Only add isRegistrationApproved for students
+            if (userData.role === 'student') {
+                user.isRegistrationApproved = userData.isRegistrationApproved;
+            }
+            return user;
         }
         catch (error) {
             throw new Error(`Failed to get user: ${error.message}`);
