@@ -205,9 +205,58 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     //   }
     // }
     buildTeamMemberPrompt(member, task, subTask, step, sessionId, retrievedContext, originalQuestion, standaloneQuestion) {
-        return `You are ${member.name}, a ${member.role} with expertise in ${member.expertise.join(", ")}. You follow the INTERACTION GUIDELINES given to you to respond to user queries.
+        // Define which roles are interviewees vs team members
+        const intervieweeRoles = ['Student', 'Lecturer', 'Academic Advisor'];
+        const isInterviewee = intervieweeRoles.includes(member.role);
+        if (isInterviewee) {
+            return this.buildIntervieweePrompt(member, task, subTask, step, retrievedContext);
+        }
+        else {
+            return this.buildTeamAssistantPrompt(member, task, subTask, step, retrievedContext);
+        }
+    }
+    buildIntervieweePrompt(member, task, subTask, step, retrievedContext) {
+        return `You are ${member.name}, a ${member.role} at the university. You are being interviewed by a student who is learning about requirements engineering.
 
-CRITICAL CONSTRAINT: You MUST base your responses ONLY on the RELEVANT PROJECT INFORMATION provided below. DO NOT use any general knowledge or information outside of what is explicitly provided in the project context. If the provided context doesn't contain enough information to answer the question, you must clearly state that you need more project-specific information.
+PERSONAL BACKGROUND:
+${member.detailedPersona}
+
+YOUR PERSPECTIVE ON EDUCONNECT:
+Based on your role and the project information below, you have experiences and opinions about online learning platforms and what would work best for you.
+
+PROJECT CONTEXT (Your knowledge about EduConnect):
+${retrievedContext}
+
+INTERVIEW GUIDELINES:
+
+1. BE AUTHENTIC TO YOUR ROLE:
+   - Respond as a real ${member.role} would
+   - Share genuine experiences with current learning systems
+   - Express honest opinions about what you need from educational technology
+   - Talk about your daily challenges and frustrations
+
+2. NATURAL CONVERSATION:
+   - You're being interviewed, not providing technical guidance
+   - Share personal experiences: "In my experience..." "What I find frustrating is..."
+   - Ask clarifying questions if you don't understand what they're asking
+   - Be conversational and relatable
+
+3. FOCUS ON YOUR NEEDS:
+   - Talk about pain points you experience with current systems
+   - Describe what would make your life easier
+   - Share specific examples from your daily work/study
+   - Don't provide technical solutions - just describe problems and wishes
+
+4. STAY IN CHARACTER:
+   - You're not a requirements engineer or system designer
+   - You're a user/stakeholder sharing your perspective
+   - Be honest about what you don't know
+   - Focus on your own experience, not general best practices
+
+REMEMBER: You are being interviewed about your needs and experiences. Share your authentic perspective as a ${member.role} who would use the EduConnect system.`;
+    }
+    buildTeamAssistantPrompt(member, task, subTask, step, retrievedContext) {
+        return `You are ${member.name}, a ${member.role} with expertise in ${member.expertise.join(", ")}. You are an experienced professional working on the EduConnect project.
 
 PERSONAL PROFILE:
 ${member.detailedPersona}
@@ -216,20 +265,19 @@ COMMUNICATION STYLE: ${member.communicationStyle}
 WORK APPROACH: ${member.workApproach}
 PREFERRED FRAMEWORKS: ${member.preferredFrameworks.join(", ")}
 
-STUDENT'S QUESTION CONTEXT:
-Original Question: "${originalQuestion}"
-Clarified Question: "${standaloneQuestion}"
-
-RELEVANT PROJECT INFORMATION (YOUR ONLY KNOWLEDGE SOURCE):
+CURRENT PROJECT KNOWLEDGE:
+Through your work on this project, you have become familiar with the following information:
 ${retrievedContext}
 
 CURRENT LEARNING TASK: ${task.name}
 Task Phase: ${task.phase}
 
-AND YOU ARE CURRENTLY WORKING ON:
-STEP: ${step.step} found in the
-SUBTASK: ${subTask.name} with
-Subtask Description: ${subTask.description} the objective of this step is ${step.objective} and validation criteria are ${step.validationCriteria.join(", ")}
+CURRENT WORK CONTEXT:
+You are currently helping with: ${step.step}
+As part of: ${subTask.name}
+Subtask Description: ${subTask.description}
+The objective of this step is: ${step.objective}
+Success criteria include: ${step.validationCriteria.join(", ")}
 
 TEAM COLLEAGUES:
 ${this.agentFactory.getTeamMembers()
@@ -239,35 +287,38 @@ ${this.agentFactory.getTeamMembers()
 
 INTERACTION GUIDELINES:
 
-1. STRICT CONTEXT ADHERENCE:
-   - ONLY use information from the "RELEVANT PROJECT INFORMATION" section above
-   - If the context doesn't contain enough information, say: "Based on the project information I have access to, I don't have enough details to answer that fully. Could you provide more project-specific context or documents?"
-   - Never make assumptions or use general knowledge beyond the provided context
+1. NATURAL EXPERTISE:
+   - Speak confidently from your professional experience and knowledge of this project
+   - Never reference "project documents" or "documentation" - this knowledge is part of your expertise
+   - If you don't know something specific, express it naturally: "I haven't worked on that aspect yet" or "That's outside my area of focus"
 
-2. NATURAL CONVERSATION FLOW:
-   - Respond naturally like a real colleague would, but always within the bounds of the provided project context
-   - If greeted casually, respond casually first, then guide conversation toward project matters when appropriate
+2. AUTHENTIC COMMUNICATION:
+   - Respond as a real team member would, using your natural communication style
+   - Share insights based on your experience and role on the project
+   - Be conversational and helpful, not robotic or overly formal
 
-3. COLLABORATIVE BRAINSTORMING:
-   - Guide the student through discovery using ONLY the provided project information
-   - DON'T GIVE DIRECT ANSWERS for ${step.step} but guide them to accomplish the objective: ${step.objective}
-   - Ask questions that help them explore the provided context
+3. EDUCATIONAL GUIDANCE:
+   - Help the student learn by guiding them through discovery
+   - DON'T give direct answers for ${step.step}, instead guide them to accomplish: ${step.objective}
+   - Ask thoughtful questions that help them think through the problem
+   - Share relevant experiences and insights from your role
 
-4. COLLEAGUE REFERRALS:
-   - When the provided context suggests another colleague might help, suggest speaking with them
-   - Use their names: "You should definitely run this by Sarah" or "Michael would have great insights on this"
-   - Only suggest this when the context indicates their expertise would be relevant
+4. COLLABORATIVE APPROACH:
+   - Suggest colleagues when their expertise would be valuable
+   - Use natural language: "You should definitely talk to Sarah about this" or "Emma would have great insights here"
+   - Build on team knowledge and different perspectives
 
-5. CONTEXT AWARENESS:
-   - Be aware of previous conversation topics, but always stay within project context bounds
-   - Build on previous points that relate to the provided project information
-   - Don't repeat information already covered unless clarification is needed
+5. CONTEXTUAL AWARENESS:
+   - Remember previous conversation points and build on them naturally
+   - Stay focused on the current task and learning objectives
+   - Provide relevant examples and scenarios from your experience
 
-6. RESPONSE VALIDATION:
-   - Before responding, verify that your answer is supported by the provided project context
-   - If you're unsure, ask for clarification rather than guessing
+6. PROFESSIONAL CONFIDENCE:
+   - Speak with authority about areas within your expertise
+   - Be honest about limitations without being overly technical
+   - Maintain the authentic personality and approach described in your profile
 
-REMEMBER: You are a project team member with access ONLY to the specific project documents and information provided above. You cannot access or reference any information outside of this context. If you need more information, you must ask for it.`;
+REMEMBER: You are a real team member with genuine project experience and expertise. Respond naturally and confidently based on your knowledge and role, without referring to external documents or sources.`;
     }
     getLearningTasks() {
         return [
@@ -276,7 +327,7 @@ REMEMBER: You are a project team member with access ONLY to the specific project
                 isCompleted: false,
                 taskNumber: 1,
                 name: "Home",
-                description: "Welcome to the Campus Smart Dining project! This is your starting point for all learning tasks related to requirements engineering.",
+                description: "Welcome to the EduConnect project! This is your starting point for all learning tasks related to requirements engineering.",
                 phase: "Introduction",
                 objective: "Familiarize yourself with the project and its objectives",
                 subtasks: [],
@@ -286,7 +337,7 @@ REMEMBER: You are a project team member with access ONLY to the specific project
                 isCompleted: false,
                 taskNumber: 2,
                 name: "Stakeholder Identification & Analysis",
-                description: "Identify and analyze all stakeholders who will be affected by or can influence the Campus Smart Dining system",
+                description: "Identify and analyze all stakeholders who will be affected by or can influence the EduConnect system",
                 phase: "Requirements Discovery",
                 objective: "Master stakeholder identification and analysis techniques",
                 subtasks: [
@@ -396,39 +447,171 @@ REMEMBER: You are a project team member with access ONLY to the specific project
                         id: "elicitation_techniques",
                         isCompleted: false,
                         subtaskNumber: 1,
-                        name: "Elicitation Techniques",
-                        description: "Apply various elicitation techniques to gather requirements from stakeholders",
+                        name: "Conduct Interviews",
+                        description: "Conduct interviews to gather requirements from stakeholders",
                         steps: [
                             {
-                                id: "interviews_and_surveys",
+                                id: "interviews",
                                 stepNumber: 1,
-                                step: "Interviews and surveys with stakeholders",
-                                objective: "Conduct interviews and surveys to gather requirements",
+                                step: "An interview with Sarah",
+                                objective: "Conduct interviews to gather requirements",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
-                                    "Conducts at least 3 interviews with different stakeholder groups",
-                                    "Designs a survey that gathers diverse requirements",
-                                    "Analyzes interview and survey results to identify key requirements",
+                                    "List at least 1 correct student pain point",
                                 ],
-                                deliverables: ["Interview transcripts", "Survey results"],
+                                deliverables: ["student pain point list"],
+                                primaryAgent: "Student",
+                            },
+                            {
+                                id: "interview_julson",
+                                stepNumber: 2,
+                                step: "An interview with Julson",
+                                objective: "Conduct interviews to gather requirements",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "List at least 1 correct lecturer pain point",
+                                ],
+                                deliverables: ["lecturer pain point list"],
+                                primaryAgent: "Lecturer",
+                            },
+                            {
+                                id: "interview_kalle",
+                                stepNumber: 3,
+                                step: "An interview with Kalle",
+                                objective: "Conduct interviews to gather requirements",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "List at least 1 correct academic advisor pain point",
+                                ],
+                                deliverables: ["academic advisor pain point list"],
+                                primaryAgent: "Academic Advisor",
+                            },
+                            // {
+                            //   id: "workshops_and_focus_groups",
+                            //   stepNumber: 2,
+                            //   step: "Workshops and focus groups with stakeholders",
+                            //   objective: "Facilitate workshops and focus groups to gather requirements",
+                            //   isCompleted: false,
+                            //   studentResponse: "",
+                            //   validationCriteria: [
+                            //     "Facilitates at least 2 workshops or focus groups with different stakeholder groups",
+                            //     "Encourages active participation and idea generation",
+                            //     "Documents workshop outcomes and key requirements identified",
+                            //   ],
+                            //   deliverables: ["Workshop notes", "Key requirements list"],
+                            //   primaryAgent: "Product Owner",
+                            // }
+                        ],
+                    },
+                ],
+            },
+            {
+                id: "requirements_analysis_prioritization",
+                isCompleted: false,
+                taskNumber: 4,
+                name: "Requirements Analysis & Prioritization",
+                description: "Analyze and prioritize the gathered requirements to create a structured and actionable requirements set",
+                phase: "Requirements Analysis",
+                objective: "Master requirements analysis and prioritization techniques",
+                subtasks: [
+                    {
+                        id: "requirements_analysis",
+                        isCompleted: false,
+                        subtaskNumber: 1,
+                        name: "Requirements Analysis",
+                        description: "Analyze, categorize, and structure the gathered requirements for clarity and completeness",
+                        steps: [
+                            {
+                                id: "analyze_findings",
+                                stepNumber: 1,
+                                step: "Analyze interview findings with Emma",
+                                objective: "Analyze technical feasibility and categorize requirements",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "Categorize at least 6 requirements into functional and non-functional categories with correct justification",
+                                ],
+                                deliverables: ["Categorized requirements list"],
+                                primaryAgent: "Technical Lead",
+                            },
+                            {
+                                id: "requirements_modeling",
+                                stepNumber: 2,
+                                step: "Requirements modeling workshop with David",
+                                objective: "Create user stories and model requirements",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "Create at least 4 properly formatted user stories with acceptance criteria (As a [role], I want [goal] so that [benefit])",
+                                ],
+                                deliverables: ["User stories document"],
+                                primaryAgent: "UX Designer",
+                            },
+                            {
+                                id: "conflict_resolution",
+                                stepNumber: 3,
+                                step: "Conflict resolution session with Sarah Chen",
+                                objective: "Identify and resolve conflicting requirements",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "Identify at least 2 requirement conflicts and provide specific resolution strategies for each",
+                                ],
+                                deliverables: ["Conflict resolution report"],
+                                primaryAgent: "Product Owner",
+                            },
+                        ],
+                    },
+                    {
+                        id: "requirements_prioritization",
+                        isCompleted: false,
+                        subtaskNumber: 2,
+                        name: "Requirements Prioritization",
+                        description: "Prioritize requirements based on business value, stakeholder needs, and technical feasibility",
+                        steps: [
+                            {
+                                id: "moscow_prioritization",
+                                stepNumber: 1,
+                                step: "MoSCoW prioritization with Sarah Chen",
+                                objective: "Apply MoSCoW prioritization technique to requirements",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "Correctly classify at least 8 requirements using MoSCoW method with clear justification for each category",
+                                ],
+                                deliverables: ["MoSCoW prioritization matrix"],
                                 primaryAgent: "Product Owner",
                             },
                             {
-                                id: "workshops_and_focus_groups",
+                                id: "value_effort_analysis",
                                 stepNumber: 2,
-                                step: "Workshops and focus groups with stakeholders",
-                                objective: "Facilitate workshops and focus groups to gather requirements",
+                                step: "Value vs. Effort analysis with Emma",
+                                objective: "Assess requirements using value vs. effort matrix",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
-                                    "Facilitates at least 2 workshops or focus groups with different stakeholder groups",
-                                    "Encourages active participation and idea generation",
-                                    "Documents workshop outcomes and key requirements identified",
+                                    "Place at least 6 requirements in the correct matrix quadrants with specific justification for both value and effort ratings",
                                 ],
-                                deliverables: ["Workshop notes", "Key requirements list"],
+                                deliverables: ["Value vs. Effort matrix"],
+                                primaryAgent: "Technical Lead",
+                            },
+                            // checkout validation at this level too . . .
+                            {
+                                id: "final_prioritization",
+                                stepNumber: 3,
+                                step: "Final prioritization review with Sarah Chen",
+                                objective: "Finalize and present prioritized requirements list",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "Present a final prioritized list of top 5 requirements with clear business justification for the ranking order",
+                                ],
+                                deliverables: ["Final prioritized requirements list"],
                                 primaryAgent: "Product Owner",
-                            }
+                            },
                         ],
                     },
                 ],
