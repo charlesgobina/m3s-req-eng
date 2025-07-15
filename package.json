@@ -11,7 +11,8 @@
     "dev": "npm run build && nodemon --watch 'src/**/*.ts' --exec 'node' ./build/server.js",
     "stato": "npm run builds && nodemon --watch stategraph.ts --exec 'node' ./stategraph.js",
     "init-embeddings": "tsx src/scripts/initializeEmbeddings.ts",
-    "setup-supabase": "tsx src/scripts/setupSupabase.ts"
+    "setup-supabase": "tsx src/scripts/setupSupabase.ts",
+    "setup-user-memory": "tsx src/scripts/setupUserMemoryEmbeddings.ts"
   },
   "keywords": [],
   "author": "",

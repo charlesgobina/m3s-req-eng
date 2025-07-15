@@ -66,6 +66,7 @@ export class ChatController {
         step,
         selectedAgent,
         sessionId,
+        userId
       );
 
       console.log("Starting stream consumption..."); // Debug log

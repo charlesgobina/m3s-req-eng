@@ -1,8 +1,4 @@
 import { db, fbAdmin } from '../config/adminConfig.js';
-import { ChatGroq } from "@langchain/groq";
-import { HumanMessage, SystemMessage } from "@langchain/core/messages";
-import retriever from "../utils/retriever.js";
-import { combineDocuments } from "../utils/combineDocuments.js";
 import { AgentService } from "./agentService.js";
 import dotenv from "dotenv";
 dotenv.config();
@@ -21,17 +17,9 @@ dotenv.config();
  * └── lastUpdated: Timestamp
  */
 export class ChatService {
-    welcomeModel;
     agentService;
     constructor() {
-        // Initialize LLM for welcome message generation
-        this.welcomeModel = new ChatGroq({
-            model: "gemma2-9b-it",
-            temperature: 0.3,
-            apiKey: process.env.GROQ_API_KEY,
-            streaming: false,
-        });
-        // Initialize AgentService for accessing team members and context
+        // Initialize AgentService for accessing team members
         this.agentService = new AgentService();
     }
     /**
@@ -183,38 +171,212 @@ export class ChatService {
         }
     }
     /**
-     * Creates an initial welcome message for a new step
+     * Creates a simple welcome message based on agent role
      */
     async createInitialWelcomeMessage(userId, taskId, subtaskId, stepId) {
         try {
-            console.log('👋 ChatService: Creating initial welcome message');
-            // Get user name from Firebase Auth
-            const userName = await this.getUserName(userId);
-            // Find the step information from task list
-            const stepInfo = await this.getStepInformation(taskId, subtaskId, stepId);
-            if (!stepInfo) {
-                throw new Error(`Step not found: ${stepId} in task ${taskId}, subtask ${subtaskId}`);
-            }
-            // Generate context-aware welcome message using LLM
-            const contextAwareContent = await this.generateContextAwareWelcomeMessage(stepInfo, userName);
-            const welcomeMessage = {
-                id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                role: 'assistant',
-                content: contextAwareContent
-            };
-            await this.addChatMessage(userId, taskId, subtaskId, stepId, welcomeMessage);
-            // Return as UI message
-            const uiMessage = {
-                ...welcomeMessage,
-                timestamp: new Date()
-            };
-            console.log('✅ ChatService: Created initial welcome message');
-            return uiMessage;
+            console.log(`🎯 [WELCOME-MSG] Creating welcome message for user ${userId}`);
+            console.log(`   └─ Context: ${taskId}/${subtaskId}/${stepId}`);
+            // Get the primary agent for this step
+            const primaryAgent = await this.getPrimaryAgentForStep(taskId, subtaskId, stepId);
+            // Generate simple welcome message
+            const welcomeMessage = this.generateSimpleWelcomeMessage(primaryAgent, taskId, subtaskId, stepId, userId);
+            console.log(`✅ [WELCOME-MSG] Simple welcome message generated`);
+            console.log(`   └─ Agent: ${primaryAgent.role}`);
+            console.log(`   └─ Message length: ${welcomeMessage.content.length} chars`);
+            // Add the message to chat history
+            await this.addChatMessage(userId, taskId, subtaskId, stepId, {
+                id: welcomeMessage.id,
+                role: welcomeMessage.role,
+                content: welcomeMessage.content,
+                agentRole: welcomeMessage.agentRole
+            });
+            return welcomeMessage;
         }
         catch (error) {
-            console.error('❌ ChatService: Failed to create welcome message:', error);
-            throw error;
+            console.error(`❌ [WELCOME-MSG] Error creating welcome message:`, error);
+            // Fallback to generic welcome message
+            return this.createFallbackWelcomeMessage(taskId, subtaskId, stepId, userId);
         }
+    }
+    /**
+     * Get current step information for context
+     */
+    async getCurrentStepInfo(taskId, subtaskId, stepId) {
+        try {
+            // Define step mappings based on your task structure
+            const stepMappings = {
+                'stakeholder_identification_analysis': {
+                    taskName: 'Stakeholder Identification & Analysis',
+                    subtasks: {
+                        'stakeholder_identification': {
+                            name: 'Stakeholder Identification',
+                            steps: {
+                                'comprehensive_stakeholder_list': { stepName: 'Comprehensive Stakeholder List', primaryAgent: 'Product Owner' },
+                                'stakeholder_categorization': { stepName: 'Stakeholder Categorization', primaryAgent: 'Product Owner' },
+                                'direct_and_indirect_stakeholders': { stepName: 'Direct and Indirect Stakeholders', primaryAgent: 'Product Owner' }
+                            }
+                        },
+                        'stakeholder_analysis': {
+                            name: 'Stakeholder Analysis & Prioritization',
+                            steps: {
+                                'stakeholder_power_dynamics': { stepName: 'Stakeholder Power Dynamics', primaryAgent: 'Product Owner' },
+                                'engagement_strategies': { stepName: 'Engagement Strategies', primaryAgent: 'Product Owner' }
+                            }
+                        }
+                    }
+                },
+                'requirements_elicitation': {
+                    taskName: 'Requirements Elicitation',
+                    subtasks: {
+                        'elicitation_techniques': {
+                            name: 'Conduct Interviews',
+                            steps: {
+                                'interviews': { stepName: 'Interview with Sarah', primaryAgent: 'Student' },
+                                'interview_julson': { stepName: 'Interview with Julson', primaryAgent: 'Lecturer' },
+                                'interview_kalle': { stepName: 'Interview with Kalle', primaryAgent: 'Academic Advisor' }
+                            }
+                        }
+                    }
+                },
+                'requirements_analysis_prioritization': {
+                    taskName: 'Requirements Analysis & Prioritization',
+                    subtasks: {
+                        'requirements_analysis': {
+                            name: 'Requirements Analysis',
+                            steps: {
+                                'analyze_findings': { stepName: 'Analyze Interview Findings', primaryAgent: 'Technical Lead' },
+                                'requirements_modeling': { stepName: 'Requirements Modeling Workshop', primaryAgent: 'UX Designer' },
+                                'conflict_resolution': { stepName: 'Conflict Resolution Session', primaryAgent: 'Product Owner' }
+                            }
+                        },
+                        'requirements_prioritization': {
+                            name: 'Requirements Prioritization',
+                            steps: {
+                                'moscow_prioritization': { stepName: 'MoSCoW Prioritization', primaryAgent: 'Product Owner' },
+                                'value_effort_analysis': { stepName: 'Value vs. Effort Analysis', primaryAgent: 'Technical Lead' },
+                                'final_prioritization': { stepName: 'Final Prioritization Review', primaryAgent: 'Product Owner' }
+                            }
+                        }
+                    }
+                }
+            };
+            const taskInfo = stepMappings[taskId];
+            const subtaskInfo = taskInfo?.subtasks?.[subtaskId];
+            const stepInfo = subtaskInfo?.steps?.[stepId];
+            return {
+                taskName: taskInfo?.taskName || taskId,
+                subtaskName: subtaskInfo?.name || subtaskId,
+                stepName: stepInfo?.stepName || stepId,
+                primaryAgent: stepInfo?.primaryAgent || 'Product Owner'
+            };
+        }
+        catch (error) {
+            console.error(`❌ Error getting current step info:`, error);
+            return {
+                taskName: taskId,
+                subtaskName: subtaskId,
+                stepName: stepId,
+                primaryAgent: 'Product Owner'
+            };
+        }
+    }
+    /**
+     * Get primary agent information for this step
+     */
+    async getPrimaryAgentForStep(taskId, subtaskId, stepId) {
+        const stepInfo = await this.getCurrentStepInfo(taskId, subtaskId, stepId);
+        // Agent information mapping
+        const agentMappings = {
+            'Product Owner': {
+                role: 'Product Owner',
+                name: 'Sarah Chen',
+                personality: 'experienced and strategic',
+                greeting: 'Hello there!',
+                isStakeholder: false
+            },
+            'Technical Lead': {
+                role: 'Technical Lead',
+                name: 'Emma Thompson',
+                personality: 'analytical and thorough',
+                greeting: 'Hi!',
+                isStakeholder: false
+            },
+            'UX Designer': {
+                role: 'UX Designer',
+                name: 'David Park',
+                personality: 'creative and user-focused',
+                greeting: 'Hey!',
+                isStakeholder: false
+            },
+            'QA Lead': {
+                role: 'QA Lead',
+                name: 'Lisa Wang',
+                personality: 'detail-oriented and methodical',
+                greeting: 'Good to see you!',
+                isStakeholder: false
+            },
+            'Student': {
+                role: 'Student',
+                name: 'Sarah',
+                personality: 'curious and eager to learn',
+                greeting: 'Hi there!',
+                isStakeholder: true
+            },
+            'Lecturer': {
+                role: 'Lecturer',
+                name: 'Julson',
+                personality: 'knowledgeable and pedagogical',
+                greeting: 'Good day!',
+                isStakeholder: true
+            },
+            'Academic Advisor': {
+                role: 'Academic Advisor',
+                name: 'Kalle',
+                personality: 'supportive and organized',
+                greeting: 'Hello!',
+                isStakeholder: true
+            }
+        };
+        return agentMappings[stepInfo.primaryAgent] || agentMappings['Product Owner'];
+    }
+    /**
+     * Generate simple welcome message based on agent type
+     */
+    generateSimpleWelcomeMessage(primaryAgent, taskId, subtaskId, stepId, userId) {
+        let content = '';
+        if (primaryAgent.isStakeholder) {
+            // Stakeholder interview message - focus on introduction and interview readiness
+            content = `${primaryAgent.greeting} I'm ${primaryAgent.name}, a ${primaryAgent.role} here at the university. I understand you'll be interviewing me for your project - I'm ready to answer your questions and share my perspective!`;
+        }
+        else {
+            // Core team member message - simple guidance message
+            content = `${primaryAgent.greeting} I'm ${primaryAgent.name}, your ${primaryAgent.role}. I'm here to guide you through this step of your requirements engineering journey. Let's get started!`;
+        }
+        return {
+            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            content: content,
+            timestamp: new Date(),
+            role: 'assistant',
+            agentRole: primaryAgent.role,
+            agentName: primaryAgent.name,
+            isWelcomeMessage: true
+        };
+    }
+    /**
+     * Fallback welcome message for error cases
+     */
+    createFallbackWelcomeMessage(taskId, subtaskId, stepId, userId) {
+        console.log(`🔄 [WELCOME-FALLBACK] Creating fallback welcome message`);
+        return {
+            id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            content: "Hello! Welcome to this step of your requirements engineering journey. I'm here to help guide you through the process. How can I assist you today?",
+            timestamp: new Date(),
+            role: 'assistant',
+            agentRole: 'Product Owner',
+            agentName: 'Sarah Chen',
+            isWelcomeMessage: true
+        };
     }
     /**
      * Gets step information from the task list
@@ -254,144 +416,6 @@ export class ChatService {
         catch (error) {
             console.error('❌ ChatService: Error getting user name:', error);
             return 'Student';
-        }
-    }
-    /**
-     * Retrieves project-specific context for the task
-     */
-    async retrieveProjectContext(taskQuery) {
-        try {
-            const relevantDocs = await retriever._getRelevantDocuments(taskQuery);
-            if (relevantDocs.length === 0) {
-                return "No specific project context found.";
-            }
-            return combineDocuments(relevantDocs);
-        }
-        catch (error) {
-            console.error('❌ ChatService: Error retrieving project context:', error);
-            return "No project context available.";
-        }
-    }
-    /**
-     * Detects if an agent is involved in the task and gets their details
-     */
-    getAgentInvolvement(stepInfo) {
-        const primaryAgent = stepInfo.step.primaryAgent;
-        if (!primaryAgent) {
-            return { isAgentInvolved: false, agent: null };
-        }
-        // Get team members from agent service
-        const teamMembers = this.agentService.getTeamMembersList();
-        const agent = teamMembers.find(member => member.role === primaryAgent);
-        if (!agent) {
-            return { isAgentInvolved: false, agent: null };
-        }
-        // Check if the agent is mentioned in step description or details
-        const fullText = `${stepInfo.step.step || ''} ${stepInfo.subtask.description || ''}`.toLowerCase();
-        const agentName = agent.name.toLowerCase();
-        const agentRole = agent.role.toLowerCase();
-        const isAgentInvolved = fullText.includes(agentName) ||
-            fullText.includes(agentRole) ||
-            fullText.includes('interview') ||
-            fullText.includes('talk to') ||
-            fullText.includes('speak with');
-        return { isAgentInvolved, agent };
-    }
-    /**
-     * Generates a context-aware welcome message using LLM
-     */
-    async generateContextAwareWelcomeMessage(stepInfo, userName) {
-        try {
-            // Check if an agent is involved
-            const { isAgentInvolved, agent } = this.getAgentInvolvement(stepInfo);
-            let systemPrompt = '';
-            let humanPrompt = '';
-            if (isAgentInvolved && agent) {
-                // Agent-perspective welcome message
-                systemPrompt = `You are ${agent.name}, a ${agent.role}. You are about to interact with a student in a requirements engineering learning task. 
-
-Your personality: ${agent.personality}
-Your communication style: ${agent.communicationStyle}
-Your work approach: ${agent.workApproach}
-
-DETAILED PERSONA:
-${agent.detailedPersona}
-
-Write a warm welcome message from your perspective that:
-1. Introduces yourself personally to the student by name
-2. EXPLICITLY explains what the student will be doing in this specific step
-3. Explains your role and involvement in what they'll be doing
-4. Sets clear expectations for the activity/exercise they're about to complete
-5. Maintains your authentic personality and communication style
-6. Makes the student feel prepared and excited for the specific task ahead
-
-Focus primarily on making it crystal clear what the student will actually be doing in this step. Be natural, authentic to your character, and educational.`;
-                humanPrompt = `Create a welcome message for this scenario:
-
-Student Name: ${userName || 'Student'}
-Task: ${stepInfo.task.name}
-Subtask: ${stepInfo.subtask.name}
-Step ID: ${stepInfo.step.id}
-Step: ${stepInfo.step.step || ''}
-Step Objective: ${stepInfo.step.objective}
-Subtask Description: ${stepInfo.subtask.description || ''}
-Your Role: ${stepInfo.step.primaryAgent}
-
-CRITICAL: The main focus should be explaining exactly what the student will be doing in this step. If you're involved in the activity (like being interviewed, providing input, etc.), explain that clearly from your perspective as ${agent.name}. Make it actionable and specific.`;
-            }
-            else {
-                // Generic educational welcome message
-                systemPrompt = `You are a helpful educational assistant for a requirements engineering course. Create personalized welcome messages that:
-1. Welcome the student warmly by name
-2. EXPLICITLY explain what the student will be doing in this specific step
-3. Provide clear, actionable guidance on the task ahead
-4. Give specific expectations for what they need to accomplish
-5. Keep the tone professional but friendly and approachable
-
-Focus primarily on making it crystal clear what the student will actually be doing in this step. Be specific and actionable.`;
-                humanPrompt = `Create a welcome message for this learning step:
-
-Student Name: ${userName || 'Student'}
-Task: ${stepInfo.task.name}
-Subtask: ${stepInfo.subtask.name}
-Step ID: ${stepInfo.step.id}
-Step: ${stepInfo.step.step || ''}
-Step Objective: ${stepInfo.step.objective}
-Subtask Description: ${stepInfo.subtask.description || ''}
-
-CRITICAL: The main focus should be explaining exactly what the student will be doing in this step. Be specific, actionable, and help them understand the concrete actions they need to take.`;
-            }
-            const response = await this.welcomeModel.invoke([
-                new SystemMessage(systemPrompt),
-                new HumanMessage(humanPrompt)
-            ]);
-            // Extract content from response
-            let content = '';
-            if (typeof response === 'object' && response !== null && 'content' in response) {
-                content = response.content.toString().trim();
-            }
-            else {
-                content = typeof response === 'string' ? response.trim() : String(response).trim();
-            }
-            // Fallback to default message if LLM fails
-            if (!content || content.length < 10) {
-                const fallbackName = userName ? ` ${userName}` : '';
-                const stepText = stepInfo.step.step || stepInfo.subtask.name || 'this step';
-                if (isAgentInvolved && agent) {
-                    content = `Hi${fallbackName}! I'm ${agent.name}, and I'm here to help you with ${stepText}. In this step, you'll be ${stepInfo.step.objective.toLowerCase()}. I'll be involved in this process, so let's work together to accomplish your learning goals!`;
-                }
-                else {
-                    content = `Welcome${fallbackName}! In this step, you'll be working on: ${stepText}. Your objective is to ${stepInfo.step.objective.toLowerCase()}. I'm here to guide you through exactly what you need to do. Ready to get started?`;
-                }
-            }
-            return content;
-        }
-        catch (error) {
-            console.error('❌ ChatService: Error generating context-aware welcome message:', error);
-            // Fallback to a basic but still context-aware message
-            const fallbackName = userName ? ` ${userName}` : '';
-            const stepText = stepInfo?.step?.step || stepInfo?.subtask?.name || 'this step';
-            return `Welcome${fallbackName}! In this step, you'll be working on: ${stepText}. Your objective is to ${stepInfo?.step?.objective?.toLowerCase() || 'complete the learning task'}. I'm here to guide you through exactly what you need to do. Let's get started!`;
         }
     }
     /**

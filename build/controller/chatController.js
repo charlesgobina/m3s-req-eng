@@ -31,7 +31,7 @@ export class ChatController {
             // Start streaming chat response
             res.write(`data: {"type": "response_start", "agent": "${selectedAgent}"}\n\n`);
             // Get the stream
-            const responseStream = await this.agentService.chatWithAgent(message, taskId, subtask, step, selectedAgent, sessionId);
+            const responseStream = await this.agentService.chatWithAgent(message, taskId, subtask, step, selectedAgent, sessionId, userId);
             console.log("Starting stream consumption..."); // Debug log
             // Process the stream
             for await (const chunk of responseStream) {

@@ -1,13 +1,13 @@
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { LearningTask, Subtask, Steps } from "../types/index.js";
-import { MemoryService } from "./memoryService.js";
+import { EnhancedMemoryService } from "./enhancedMemoryService.js";
 import { AgentFactory } from "./agentFactory.js";
 
 export class ValidationService {
-  private memoryService: MemoryService;
+  private memoryService: EnhancedMemoryService;
   private agentFactory: AgentFactory;
 
-  constructor(memoryService: MemoryService, agentFactory: AgentFactory) {
+  constructor(memoryService: EnhancedMemoryService, agentFactory: AgentFactory) {
     this.memoryService = memoryService;
     this.agentFactory = agentFactory;
   }
@@ -18,8 +18,8 @@ export class ValidationService {
     subTask: Subtask,
     step: Steps,
     sessionId: string,
+    userId: string,
     learningTasks: LearningTask[],
-    generateStandaloneQuestion: (text: string) => Promise<string>,
     retrieveRelevantContext: (question: string) => Promise<string>
   ): Promise<{
     score: number;
@@ -30,15 +30,19 @@ export class ValidationService {
     const task = learningTasks.find((t) => t.id === taskId);
     if (!task) throw new Error("Invalid task");
 
-    // Generate standalone question and retrieve context for validation
-    const standaloneQuestion = await generateStandaloneQuestion(submission);
-    const retrievedContext = await retrieveRelevantContext(standaloneQuestion);
+    // Retrieve context for validation using the original submission
+    const retrievedContext = await retrieveRelevantContext(submission);
 
     const systemPrompt = this.buildValidationPrompt(task, subTask, step, retrievedContext);
     const threadId = `${sessionId}_validation_${taskId}`;
 
-    // Get or create memory for validation thread
-    const validationMemory = this.memoryService.getConversationMemory(threadId);
+    // Get progress-aware memory for validation thread
+    const validationMemory = this.memoryService.getSmartProgressMemory(
+      userId,
+      taskId,
+      subTask.id,
+      step.id
+    );
     const memoryMessages = await validationMemory.chatHistory.getMessages();
     
     const managedMessages = [

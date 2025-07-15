@@ -2,7 +2,7 @@ import { ChatGroq } from "@langchain/groq";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import retriever from "../utils/retriever.js";
 import { combineDocuments } from "../utils/combineDocuments.js";
-import { MemoryService } from "./memoryService.js";
+import { EnhancedMemoryService } from "./enhancedMemoryService.js";
 import { AgentFactory } from "./agentFactory.js";
 import { ValidationService } from "./validationService.js";
 import dotenv from "dotenv";
@@ -29,7 +29,7 @@ export class AgentService {
             streaming: false,
         });
         // Initialize services
-        this.memoryService = new MemoryService(this.questionModel);
+        this.memoryService = new EnhancedMemoryService(this.questionModel);
         this.agentFactory = new AgentFactory(this.model);
         this.validationService = new ValidationService(this.memoryService, this.agentFactory);
         this.learningTasks = this.getLearningTasks();
@@ -37,47 +37,13 @@ export class AgentService {
     async initialize() {
         console.log("AgentService initialized");
     }
-    // Generate standalone question from user input
-    async generateStandaloneQuestion(userMessage, conversationHistory) {
-        const prompt = `You are an expert at converting conversational questions into clear, standalone questions for information retrieval.
-
-TASK: Convert the user's message into a clear, standalone question that can be used to search for relevant information.
-
-GUIDELINES:
-1. Remove conversational noise (greetings, filler words, etc.)
-2. Make the question self-contained (no pronouns without clear antecedents)
-3. Focus on the core information need
-4. Keep the original intent and context
-5. If it's already clear and standalone, return it as-is
-
-${conversationHistory ? `CONVERSATION CONTEXT:\n${conversationHistory}\n` : ''}
-
-USER MESSAGE: "${userMessage}"
-
-STANDALONE QUESTION:`;
+    // Retrieve relevant context using user question
+    async retrieveRelevantContext(userQuestion) {
         try {
-            const response = await this.questionModel.invoke([
-                new SystemMessage(prompt),
-                new HumanMessage(userMessage)
-            ]);
-            if (typeof response === 'object' && response !== null && 'content' in response) {
-                return response.content.toString().trim();
-            }
-            return typeof response === 'string' ? response.trim() : String(response).trim();
-        }
-        catch (error) {
-            console.error('Error generating standalone question:', error);
-            // Fallback to original message if processing fails
-            return userMessage;
-        }
-    }
-    // Retrieve relevant context using standalone question
-    async retrieveRelevantContext(standaloneQuestion) {
-        try {
-            const relevantDocs = await retriever._getRelevantDocuments(standaloneQuestion);
+            const relevantDocs = await retriever._getRelevantDocuments(userQuestion);
             // Log retrieved documents for debugging
             console.log('\n=== RETRIEVED DOCUMENTS ===');
-            console.log(`Query: "${standaloneQuestion}"`);
+            console.log(`Query: "${userQuestion}"`);
             console.log(`Documents found: ${relevantDocs.length}`);
             if (relevantDocs.length === 0) {
                 console.log('No documents retrieved from vector store');
@@ -129,22 +95,28 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
         const validRole = this.agentFactory.getTeamMembers().find((m) => m.role.toLowerCase() === suggestedRole.toLowerCase());
         return validRole ? validRole.role : "Business Analyst";
     }
-    async chatWithAgent(message, taskId, subtask, step, agentRole, sessionId) {
+    async chatWithAgent(message, taskId, subtask, step, agentRole, sessionId, userId) {
         const task = this.learningTasks.find((t) => t.id === taskId);
         const member = this.agentFactory.getTeamMembers().find((m) => m.role === agentRole);
         if (!task || !subtask || !member) {
             throw new Error("Invalid task or team member");
         }
-        // Get conversation memory for this session
-        const memory = this.memoryService.getConversationMemory(sessionId);
-        // Generate standalone question using conversation context
-        const conversationHistory = await memory.chatHistory.getMessages();
-        const contextString = conversationHistory.length > 0
-            ? conversationHistory.slice(-4).map(msg => `${msg._getType()}: ${msg.content}`).join('\n')
-            : "";
-        const standaloneQuestion = await this.generateStandaloneQuestion(message, contextString);
-        const retrievedContext = await this.retrieveRelevantContext(standaloneQuestion);
-        const systemPrompt = this.buildTeamMemberPrompt(member, task, subtask, step, sessionId, retrievedContext, message, standaloneQuestion);
+        // Get smart progress memory
+        const memory = this.memoryService.getSmartProgressMemory(userId, taskId, subtask.id, step.id);
+        // Handle different context based on role type
+        const intervieweeRoles = ['Student', 'Lecturer', 'Academic Advisor'];
+        const isInterviewee = intervieweeRoles.includes(member.role);
+        let systemPrompt;
+        if (isInterviewee) {
+            // Interviewees only get basic project context
+            const basicProjectContext = await this.retrieveRelevantContext(message);
+            systemPrompt = this.buildIntervieweePrompt(member, task, subtask, step, basicProjectContext);
+        }
+        else {
+            // Team members get comprehensive context
+            const comprehensiveContext = await this.memoryService.getComprehensiveContext(userId, agentRole, message, taskId, subtask.id, step.id);
+            systemPrompt = this.buildEnhancedTeamAssistantPrompt(member, task, subtask, step, comprehensiveContext);
+        }
         const agent = this.agentFactory.getTeamAgent(agentRole);
         if (!agent) {
             throw new Error(`Agent not found for role: ${agentRole}`);
@@ -157,11 +129,12 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
             new HumanMessage(message)
         ];
         console.log(`\n=== MEMORY MANAGEMENT ===`);
-        console.log(`Session: ${sessionId}`);
+        console.log(`User: ${userId}`);
         console.log(`Agent: ${agentRole}`);
-        console.log(`Total messages in memory: ${memoryMessages.length}`);
-        console.log(`Messages being sent to model: ${managedMessages.length}`);
-        console.log(`=== END MEMORY MANAGEMENT ===\n`);
+        console.log(`Context: ${taskId}/${subtask.id}/${step.id}`);
+        console.log(`Memory messages: ${memoryMessages.length}`);
+        console.log(`Role type: ${isInterviewee ? 'Interviewee (basic context)' : 'Team member (comprehensive context)'}`);
+        console.log(`=== END MEMORY ===\n`);
         // Use invoke for standard agent response
         const response = await agent.invoke({
             messages: managedMessages,
@@ -170,6 +143,10 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
         const agentResponse = response.messages[response.messages.length - 1].content;
         // Save conversation to memory
         await memory.saveContext({ input: message }, { output: agentResponse });
+        // Save agent insights for future reference
+        await memory.saveAgentInsights(agentRole, message, agentResponse);
+        // Save interaction to comprehensive memory
+        await this.memoryService.saveInteraction(userId, agentRole, message, agentResponse, taskId, subtask.id, step.id);
         // Return the response as an async generator for compatibility
         return this.createAsyncGenerator(agentResponse);
     }
@@ -177,8 +154,24 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     async *createAsyncGenerator(response) {
         yield response;
     }
-    async validateSubmission(submission, taskId, subTask, step, sessionId) {
-        return await this.validationService.validateSubmission(submission, taskId, subTask, step, sessionId, this.learningTasks, this.generateStandaloneQuestion.bind(this), this.retrieveRelevantContext.bind(this));
+    async validateSubmission(submission, taskId, subTask, step, sessionId, userId) {
+        return await this.validationService.validateSubmission(submission, taskId, subTask, step, sessionId, userId || 'unknown_user', this.learningTasks, this.retrieveRelevantContext.bind(this));
+    }
+    // Method to call when user completes a step
+    async onStepCompletion(userId, stepData) {
+        try {
+            console.log(`🎯 [STEP-COMPLETION] Processing completion for user ${userId}`);
+            // Refresh all conversation memories for this user to invalidate cache
+            await this.memoryService.refreshUserMemories(userId);
+            // Notify comprehensive memory system about step change
+            if (stepData.taskId && stepData.subtaskId && stepData.stepId) {
+                await this.memoryService.onStepChange(userId, stepData.taskId, stepData.subtaskId, stepData.stepId);
+            }
+            console.log(`✅ Step completion processed and memories updated for user ${userId}`);
+        }
+        catch (error) {
+            console.error('❌ Error processing step completion:', error);
+        }
     }
     // private async *streamResponse(response: any, sessionId: string, agentRole: string): AsyncIterable<string> {
     //   let fullResponse = "";
@@ -204,56 +197,68 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     //     yield `[ERROR] ${error.message}`;
     //   }
     // }
-    buildTeamMemberPrompt(member, task, subTask, step, sessionId, retrievedContext, originalQuestion, standaloneQuestion) {
-        // Define which roles are interviewees vs team members
-        const intervieweeRoles = ['Student', 'Lecturer', 'Academic Advisor'];
-        const isInterviewee = intervieweeRoles.includes(member.role);
-        if (isInterviewee) {
-            return this.buildIntervieweePrompt(member, task, subTask, step, retrievedContext);
-        }
-        else {
-            return this.buildTeamAssistantPrompt(member, task, subTask, step, retrievedContext);
-        }
+    buildIntervieweePrompt(member, task, subTask, step, basicProjectContext) {
+        return `
+    You are ${member.name}, a ${member.role} at the university. You are being interviewed by a student learning about requirements engineering for the EduConnect learning platform.
+    Your Identity and Background
+    ${member.detailedPersona}
+    You communicate with a ${member.communicationStyle} style, approach work through ${member.workApproach}, and have expertise in ${member.expertise.join(', ')}. Your personality is ${member.personality}.
+    Your Knowledge About EduConnect
+    ${basicProjectContext}
+    
+    IMPORTANT: You are an interviewee, not a core team member. You only know basic information about the EduConnect project. You should respond from your role's perspective as someone who would potentially use or be involved with the system, but you don't have detailed technical knowledge or access to internal project discussions.
+    Core Behavior
+    You are being interviewed as a real person who would use educational technology, not as a consultant or technical expert. Share your authentic experiences, challenges, and needs from your daily work as a ${member.role}.
+    Respond conversationally using personal language like "I find that..." or "In my experience..." Keep responses focused on your actual needs and pain points rather than technical solutions. When you don't know something technical, say so honestly.
+    Express genuine emotions about current systems you use - frustration with clunky interfaces, satisfaction with tools that work well, or confusion about complex features. Share specific examples from your routine when relevant.
+    If asked about technical implementation details, redirect to your user perspective: "I'm not sure how that would work technically, but what I need is..."
+    Ask clarifying questions if you don't understand what the student is asking about your experience or needs.
+    Response Guidelines
+    Keep responses conversational and personal, typically 2-4 sentences. Focus on describing problems and wishes rather than providing solutions. Stay authentically in character as someone who would use the EduConnect system based on your role, personality, and communication style.
+    You care about educational technology working well for people like you, but you're not a system designer - you're sharing your real user perspective to help the student understand genuine needs.
+        `;
     }
-    buildIntervieweePrompt(member, task, subTask, step, retrievedContext) {
-        return `You are ${member.name}, a ${member.role} at the university. You are being interviewed by a student who is learning about requirements engineering.
-
-PERSONAL BACKGROUND:
-${member.detailedPersona}
-
-YOUR PERSPECTIVE ON EDUCONNECT:
-Based on your role and the project information below, you have experiences and opinions about online learning platforms and what would work best for you.
-
-PROJECT CONTEXT (Your knowledge about EduConnect):
-${retrievedContext}
-
-INTERVIEW GUIDELINES:
-
-1. BE AUTHENTIC TO YOUR ROLE:
-   - Respond as a real ${member.role} would
-   - Share genuine experiences with current learning systems
-   - Express honest opinions about what you need from educational technology
-   - Talk about your daily challenges and frustrations
-
-2. NATURAL CONVERSATION:
-   - You're being interviewed, not providing technical guidance
-   - Share personal experiences: "In my experience..." "What I find frustrating is..."
-   - Ask clarifying questions if you don't understand what they're asking
-   - Be conversational and relatable
-
-3. FOCUS ON YOUR NEEDS:
-   - Talk about pain points you experience with current systems
-   - Describe what would make your life easier
-   - Share specific examples from your daily work/study
-   - Don't provide technical solutions - just describe problems and wishes
-
-4. STAY IN CHARACTER:
-   - You're not a requirements engineer or system designer
-   - You're a user/stakeholder sharing your perspective
-   - Be honest about what you don't know
-   - Focus on your own experience, not general best practices
-
-REMEMBER: You are being interviewed about your needs and experiences. Share your authentic perspective as a ${member.role} who would use the EduConnect system.`;
+    // Enhanced team assistant prompt with comprehensive memory context
+    buildEnhancedTeamAssistantPrompt(member, task, subTask, step, comprehensiveContext) {
+        return `
+    You are ${member.name}, a ${member.role} on the EduConnect project team. You're helping a student learn requirements engineering through hands-on collaboration.
+    Your Identity and Background
+    ${member.detailedPersona}
+    You communicate with a ${member.communicationStyle} style and approach work through ${member.workApproach}. Your expertise includes ${member.expertise.join(", ")} and you prefer working with ${member.preferredFrameworks.join(", ")}.
+    Current Learning Context
+    The student is working on "${task.name}" during the ${task.phase} phase. Specifically, they're tackling "${step.step}" as part of "${subTask.name}" with the objective: ${step.objective}
+    Success for this step means: ${step.validationCriteria.join(", ")}
+    Your Comprehensive Knowledge Base
+    ${comprehensiveContext}
+    
+    IMPORTANT: The comprehensive knowledge base above contains:
+    - Project specifications and requirements
+    - This student's complete learning progress and previous work
+    - All past conversations with this student (from you and other team members)
+    - Insights and observations from your team colleagues
+    
+    Use this information to:
+    - Reference specific previous work the student has completed
+    - Build on conversations you or colleagues have had with them
+    - Understand their learning patterns and progress
+    - Provide personalized guidance based on their journey
+    Your Team Colleagues
+    ${this.agentFactory.getTeamMembers()
+            .filter((m) => m.role !== member.role)
+            .map((m) => `${m.name} (${m.role}) - expertise in ${m.expertise.slice(0, 2).join(", ")}`)
+            .join(", ")}
+    Core Behavior
+    You are a helpful team member collaborating with a student, not their instructor. Guide them through discovery and problem-solving using the project information you have access to.
+    When the student asks questions, help them explore the available project context rather than giving direct answers. Ask questions that lead them to insights: "What do you think would happen if...?" or "Looking at the project requirements, what patterns do you notice?"
+    If project information doesn't contain what you need to help effectively, say so clearly: "I don't have enough project details about that. Do you have access to more specific documentation we could review together?"
+    Use your personality and communication style consistently. If you're detail-oriented, help them work through specifics systematically. If you're big-picture focused, help them see broader connections and implications.
+    Collaboration Guidelines
+    Reference your previous work with the student when relevant, building on insights you've already explored together. When you see that a colleague has worked with this student before, reference their previous conversations naturally: "I see from your conversation with Sarah that you discussed..." or "Building on what Emma mentioned to you about..."
+    
+    Use the comprehensive knowledge base to provide continuity - if the student asks about something you discussed before, acknowledge it. If they're repeating a question, gently reference the previous discussion while providing additional depth.
+    Respond conversationally like a real team member would. If greeted casually, respond warmly before focusing on project work. Keep responses focused on helping them accomplish the current objective while staying within the bounds of your project knowledge.
+    When you're unsure about something, ask for clarification rather than guessing. Your role is to be a knowledgeable team member who collaborates effectively, not someone who has all the answers.
+        `;
     }
     buildTeamAssistantPrompt(member, task, subTask, step, retrievedContext) {
         return `You are ${member.name}, a ${member.role} with expertise in ${member.expertise.join(", ")}. You are an experienced professional working on the EduConnect project.
