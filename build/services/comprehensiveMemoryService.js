@@ -302,23 +302,40 @@ export class ComprehensiveMemoryService {
     }
     // Create embeddings for a batch of content
     async createEmbeddingBatch(userId, contents) {
-        const embeddings = [];
+        const chunksWithMetadata = [];
+        // First pass: Split all content into chunks
         for (const content of contents) {
-            // Split content into chunks if needed
             const chunks = await this.textSplitter.splitText(content.content);
             for (const chunk of chunks) {
-                // Generate embedding for this chunk
-                const embedding = await this.embeddings.embedQuery(chunk);
-                embeddings.push({
-                    content: chunk,
-                    embedding: embedding,
-                    user_id: userId,
-                    content_type: content.contentType,
-                    agent_role: content.agentRole,
-                    step_id: content.stepId,
+                chunksWithMetadata.push({
+                    chunk,
+                    contentType: content.contentType,
+                    agentRole: content.agentRole,
+                    stepId: content.stepId,
                     metadata: content.metadata || {}
                 });
             }
+        }
+        // Second pass: Generate embeddings in parallel batches
+        const EMBEDDING_BATCH_SIZE = 10; // Parallel embedding generation
+        const embeddings = [];
+        for (let i = 0; i < chunksWithMetadata.length; i += EMBEDDING_BATCH_SIZE) {
+            const batch = chunksWithMetadata.slice(i, i + EMBEDDING_BATCH_SIZE);
+            // Generate embeddings in parallel for this batch
+            const batchEmbeddings = await Promise.all(batch.map(async (item) => {
+                const embedding = await this.embeddings.embedQuery(item.chunk);
+                return {
+                    content: item.chunk,
+                    embedding: embedding,
+                    user_id: userId,
+                    content_type: item.contentType,
+                    agent_role: item.agentRole,
+                    step_id: item.stepId,
+                    metadata: item.metadata
+                };
+            }));
+            embeddings.push(...batchEmbeddings);
+            console.log(`   🔮 Generated ${batchEmbeddings.length} embeddings (${embeddings.length}/${chunksWithMetadata.length} total)`);
         }
         // Insert directly into Supabase table
         const { error } = await this.supabaseClient
