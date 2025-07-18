@@ -89,7 +89,7 @@ export class ComprehensiveMemoryService {
       
       // 4. Format comprehensive context
       const context = this.formatComprehensiveContext(relevantMemories, projectContext, agentRole);
-      
+
       console.log(`✅ [COMPREHENSIVE-MEMORY] Context ready: ${context.length} characters`);
       return context;
       
@@ -580,6 +580,7 @@ export class ComprehensiveMemoryService {
 
   // Truncate context if too long
   private truncateContext(context: string, maxLength: number): string {
+    console.log(`🔄 [CONTEXT-TRUNCATE] Truncating context from ${context.length} to max ${maxLength} characters`);
     if (context.length <= maxLength) {
       return context;
     }
