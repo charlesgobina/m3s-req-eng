@@ -11,7 +11,7 @@ export class ChatController {
     this.agentService = agentService;
   }
 
-  async streamChat(req: Request, res: Response) {
+  async streamChat(req: AuthenticatedRequest, res: Response) {
     try {
       const {
         message,
@@ -21,6 +21,12 @@ export class ChatController {
         sessionId,
         agentRole,
       }: ChatRequest = req.body;
+
+      const userId = req.user?.uid;
+
+      if (!userId) {
+        return res.status(401).json({ error: "User not authenticated" });
+      }
 
       if (!message || !taskId || !sessionId || !step) {
         return res.status(400).json({ error: "Missing required fields" });
@@ -60,6 +66,7 @@ export class ChatController {
         step,
         selectedAgent,
         sessionId,
+        userId
       );
 
       console.log("Starting stream consumption..."); // Debug log
@@ -107,7 +114,12 @@ export class ChatController {
     try {
       const { taskId, subtaskId, stepId } = req.params;
       const userId = req.user?.uid;
-      
+
+      console.log("###############################");
+      console.log(userId);
+      console.log()
+      console.log("#################################");
+
       if (!userId) {
         return res.status(401).json({ 
           error: "User not authenticated" 
@@ -226,7 +238,7 @@ export class ChatController {
    */
   async createWelcomeMessage(req: AuthenticatedRequest, res: Response) {
     try {
-      const { taskId, subtaskId, stepId, taskName, stepObjective } = req.body;
+      const { taskId, subtaskId, stepId } = req.body;
       const userId = req.user?.uid;
       
       if (!userId) {
@@ -235,9 +247,9 @@ export class ChatController {
         });
       }
 
-      if (!taskId || !subtaskId || !stepId || !taskName || !stepObjective) {
+      if (!taskId || !subtaskId || !stepId) {
         return res.status(400).json({ 
-          error: "Missing required fields: taskId, subtaskId, stepId, taskName, stepObjective" 
+          error: "Missing required fields: taskId, subtaskId, stepId" 
         });
       }
 
@@ -245,9 +257,7 @@ export class ChatController {
         userId, 
         taskId, 
         subtaskId, 
-        stepId, 
-        taskName, 
-        stepObjective
+        stepId
       );
       
       res.json({ 

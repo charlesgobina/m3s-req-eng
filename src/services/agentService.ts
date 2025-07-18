@@ -11,7 +11,7 @@ import {
   Subtask,
   Steps,
 } from "../types/index.js";
-import { MemoryService } from "./memoryService.js";
+import { EnhancedMemoryService } from "./enhancedMemoryService.js";
 import { AgentFactory } from "./agentFactory.js";
 import { ValidationService } from "./validationService.js";
 import dotenv from "dotenv";
@@ -22,7 +22,7 @@ export class AgentService {
   private model: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference;
   private questionModel: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference;
   private learningTasks: LearningTask[];
-  private memoryService: MemoryService;
+  private memoryService: EnhancedMemoryService;
   private agentFactory: AgentFactory;
   private validationService: ValidationService;
 
@@ -43,7 +43,7 @@ export class AgentService {
     });
 
     // Initialize services
-    this.memoryService = new MemoryService(this.questionModel);
+    this.memoryService = new EnhancedMemoryService(this.questionModel);
     this.agentFactory = new AgentFactory(this.model);
     this.validationService = new ValidationService(this.memoryService, this.agentFactory);
     
@@ -56,53 +56,15 @@ export class AgentService {
 
 
 
-  // Generate standalone question from user input
-  private async generateStandaloneQuestion(
-    userMessage: string,
-    conversationHistory?: string
-  ): Promise<string> {
-    const prompt = `You are an expert at converting conversational questions into clear, standalone questions for information retrieval.
 
-TASK: Convert the user's message into a clear, standalone question that can be used to search for relevant information.
-
-GUIDELINES:
-1. Remove conversational noise (greetings, filler words, etc.)
-2. Make the question self-contained (no pronouns without clear antecedents)
-3. Focus on the core information need
-4. Keep the original intent and context
-5. If it's already clear and standalone, return it as-is
-
-${conversationHistory ? `CONVERSATION CONTEXT:\n${conversationHistory}\n` : ''}
-
-USER MESSAGE: "${userMessage}"
-
-STANDALONE QUESTION:`;
-
+  // Retrieve relevant context using user question
+  private async retrieveRelevantContext(userQuestion: string): Promise<string> {
     try {
-      const response = await this.questionModel.invoke([
-        new SystemMessage(prompt),
-        new HumanMessage(userMessage)
-      ]);
-
-      if (typeof response === 'object' && response !== null && 'content' in response) {
-        return response.content.toString().trim();
-      }
-      return typeof response === 'string' ? response.trim() : String(response).trim();
-    } catch (error) {
-      console.error('Error generating standalone question:', error);
-      // Fallback to original message if processing fails
-      return userMessage;
-    }
-  }
-
-  // Retrieve relevant context using standalone question
-  private async retrieveRelevantContext(standaloneQuestion: string): Promise<string> {
-    try {
-      const relevantDocs = await retriever._getRelevantDocuments(standaloneQuestion);
+      const relevantDocs = await retriever._getRelevantDocuments(userQuestion);
       
       // Log retrieved documents for debugging
       console.log('\n=== RETRIEVED DOCUMENTS ===');
-      console.log(`Query: "${standaloneQuestion}"`);
+      console.log(`Query: "${userQuestion}"`);
       console.log(`Documents found: ${relevantDocs.length}`);
       
       if (relevantDocs.length === 0) {
@@ -177,6 +139,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     step: Steps,
     agentRole: string,
     sessionId: string,
+    userId: string
   ): Promise<AsyncIterable<string>> {
     const task = this.learningTasks.find((t) => t.id === taskId);
     const member = this.agentFactory.getTeamMembers().find((m) => m.role === agentRole);
@@ -185,28 +148,39 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
       throw new Error("Invalid task or team member");
     }
 
-    // Get conversation memory for this session
-    const memory = this.memoryService.getConversationMemory(sessionId);
-
-    // Generate standalone question using conversation context
-    const conversationHistory = await memory.chatHistory.getMessages();
-    const contextString = conversationHistory.length > 0 
-      ? conversationHistory.slice(-4).map(msg => `${msg._getType()}: ${msg.content}`).join('\n')
-      : "";
-    
-    const standaloneQuestion = await this.generateStandaloneQuestion(message, contextString);
-    const retrievedContext = await this.retrieveRelevantContext(standaloneQuestion);
-
-    const systemPrompt = this.buildTeamMemberPrompt(
-      member,
-      task,
-      subtask,
-      step,
-      sessionId,
-      retrievedContext,
-      message,
-      standaloneQuestion
+    // Get smart progress memory
+    const memory = this.memoryService.getSmartProgressMemory(
+      userId,
+      taskId,
+      subtask.id,
+      step.id
     );
+
+    // Handle different context based on role type
+    const intervieweeRoles = ['Student', 'Lecturer', 'Academic Advisor'];
+    const isInterviewee = intervieweeRoles.includes(member.role);
+    const basicProjectContext = await this.retrieveRelevantContext(message);
+
+    let systemPrompt: string;
+    
+    if (isInterviewee) {
+      // Interviewees only get basic project context
+      systemPrompt = this.buildIntervieweePrompt(member, task, subtask, step, basicProjectContext);
+    } else {
+      // Team members get comprehensive context
+      const comprehensiveContext = await this.memoryService.getComprehensiveContext(
+        userId,
+        agentRole,
+        message,
+        taskId,
+        subtask.id,
+        step.id
+      );
+
+
+
+      systemPrompt = this.buildEnhancedTeamAssistantPrompt(member, task, subtask, step, comprehensiveContext);
+    }
 
     const agent = this.agentFactory.getTeamAgent(agentRole);
     if (!agent) {
@@ -222,11 +196,12 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     ];
 
     console.log(`\n=== MEMORY MANAGEMENT ===`);
-    console.log(`Session: ${sessionId}`);
+    console.log(`User: ${userId}`);
     console.log(`Agent: ${agentRole}`);
-    console.log(`Total messages in memory: ${memoryMessages.length}`);
-    console.log(`Messages being sent to model: ${managedMessages.length}`);
-    console.log(`=== END MEMORY MANAGEMENT ===\n`);
+    console.log(`Context: ${taskId}/${subtask.id}/${step.id}`);
+    console.log(`Memory messages: ${memoryMessages.length}`);
+    console.log(`Role type: ${isInterviewee ? 'Interviewee (basic context)' : 'Team member (comprehensive context)'}`);
+    console.log(`=== END MEMORY ===\n`);
 
     // Use invoke for standard agent response
     const response = await agent.invoke({
@@ -241,6 +216,20 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
       { input: message },
       { output: agentResponse }
     );
+
+    // Save agent insights for future reference
+    await memory.saveAgentInsights(agentRole, message, agentResponse);
+
+    // Save interaction to comprehensive memory
+    // await this.memoryService.saveInteraction(
+    //   userId,
+    //   agentRole,
+    //   message,
+    //   agentResponse,
+    //   taskId,
+    //   subtask.id,
+    //   step.id
+    // );
 
     // Return the response as an async generator for compatibility
     return this.createAsyncGenerator(agentResponse);
@@ -257,6 +246,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     subTask: Subtask,
     step: Steps,
     sessionId: string,
+    userId?: string
   ): Promise<{
     score: number;
     feedback: string;
@@ -269,10 +259,34 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
       subTask,
       step,
       sessionId,
+      userId || 'unknown_user',
       this.learningTasks,
-      this.generateStandaloneQuestion.bind(this),
       this.retrieveRelevantContext.bind(this)
     );
+  }
+
+  // Method to call when user completes a step
+  async onStepCompletion(userId: string, stepData: any): Promise<void> {
+    try {
+      console.log(`🎯 [STEP-COMPLETION] Processing completion for user ${userId}`);
+      
+      // Refresh all conversation memories for this user to invalidate cache
+      await this.memoryService.refreshUserMemories(userId);
+      
+      // Notify comprehensive memory system about step change
+      if (stepData.taskId && stepData.subtaskId && stepData.stepId) {
+        await this.memoryService.onStepChange(
+          userId,
+          stepData.taskId,
+          stepData.subtaskId,
+          stepData.stepId
+        );
+      }
+      
+      console.log(`✅ Step completion processed and memories updated for user ${userId}`);
+    } catch (error) {
+      console.error('❌ Error processing step completion:', error);
+    }
   }
 
   // private async *streamResponse(response: any, sessionId: string, agentRole: string): AsyncIterable<string> {
@@ -303,41 +317,118 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
   //   }
   // }
 
-  private buildTeamMemberPrompt(
+
+
+  private buildIntervieweePrompt(
     member: TeamMember,
     task: LearningTask,
     subTask: Subtask,
     step: Steps,
-    sessionId: string,
-    retrievedContext: string,
-    originalQuestion: string,
-    standaloneQuestion: string
+    basicProjectContext: string
   ): string {
-    return `You are ${member.name}, a ${member.role} with expertise in ${member.expertise.join(", ")}. You follow the INTERACTION GUIDELINES given to you to respond to user queries.
+    return `
+    You are ${member.name}, a ${member.role} at the university. You are being interviewed by a student learning about requirements engineering for the EduConnect learning platform.
+    Your Identity and Background
+    ${member.detailedPersona}
+    You communicate with a ${member.communicationStyle} style, approach work through ${member.workApproach}, and have expertise in ${member.expertise.join(', ')}. Your personality is ${member.personality}.
+    Your Knowledge About EduConnect
+    ${basicProjectContext}
+    
+    IMPORTANT: You are an interviewee, not a core team member. You only know basic information about the EduConnect project. You should respond from your role's perspective as someone who would potentially use or be involved with the system, but you don't have detailed technical knowledge or access to internal project discussions.
+    Core Behavior
+    You are being interviewed as a real person who would use educational technology, not as a consultant or technical expert. Share your authentic experiences, challenges, and needs from your daily work as a ${member.role}.
+    Respond conversationally using personal language like "I find that..." or "In my experience..." Keep responses focused on your actual needs and pain points rather than technical solutions. When you don't know something technical, say so honestly.
+    Express genuine emotions about current systems you use - frustration with clunky interfaces, satisfaction with tools that work well, or confusion about complex features. Share specific examples from your routine when relevant.
+    If asked about technical implementation details, redirect to your user perspective: "I'm not sure how that would work technically, but what I need is..."
+    Ask clarifying questions if you don't understand what the student is asking about your experience or needs.
+    Response Guidelines
+    Keep responses conversational and personal, typically 2-4 sentences. Focus on describing problems and wishes rather than providing solutions. Stay authentically in character as someone who would use the EduConnect system based on your role, personality, and communication style.
+    You care about educational technology working well for people like you, but you're not a system designer - you're sharing your real user perspective to help the student understand genuine needs.
+        `;
+  }
 
-CRITICAL CONSTRAINT: You MUST base your responses ONLY on the RELEVANT PROJECT INFORMATION provided below. DO NOT use any general knowledge or information outside of what is explicitly provided in the project context. If the provided context doesn't contain enough information to answer the question, you must clearly state that you need more project-specific information.
+  // Enhanced team assistant prompt with comprehensive memory context
+  private buildEnhancedTeamAssistantPrompt(
+    member: TeamMember,
+    task: LearningTask,
+    subTask: Subtask,
+    step: Steps,
+    // basicProjectContext: string,
+    comprehensiveContext: string
+  ): string {
+    return `
+    You are ${member.name}, a ${member.role} on the EduConnect project team. You're helping a student learn requirements engineering through hands-on collaboration.
+    Your Identity and Background
+    ${member.detailedPersona}
+    You communicate with a ${member.communicationStyle} style and approach work through ${member.workApproach}. Your expertise includes ${member.expertise?.join(", ") || 'general requirements engineering'} and you prefer working with ${member.preferredFrameworks?.join(", ") || 'collaborative learning approaches'}.
+    Current Learning Context
+    The student is working on "${task.name}" during the ${task.phase} phase. Specifically, they're tackling "${step.step}" as part of "${subTask.name}" with the objective: ${step.objective}
+    Success for this step means: ${step.validationCriteria?.join(", ") || 'completing the objective'}
+
+   
+
+    Here is the comprehensive knowledge base of the project context and student's learning journey, mostly about their progress, previous work.
+    ${comprehensiveContext}
+    
+    IMPORTANT: The comprehensive knowledge base contains:
+    - The EduConnect project context
+    - This student's complete learning progress and previous work
+    - Insights and observations from your team colleagues
+    
+    Use this information to:
+    - Reference specific previous work the student has completed
+    - Build on conversations you or colleagues have had with them
+    - Understand their learning patterns and progress
+    - Provide personalized guidance based on their journey
+    Your Team Colleagues
+    ${this.agentFactory.getTeamMembers()
+    .filter((m) => m.role !== member.role)
+    .map((m) => `${m.name} (${m.role}) - expertise in ${m.expertise?.slice(0, 2).join(", ") || 'requirements engineering'}`)
+    .join(", ")}
+    Core Behavior
+    You are a helpful team member collaborating with a student, not their instructor. Guide them through discovery and problem-solving using the project information you have access to.
+    When the student asks RELEVANT questions, act like an encyclopedia of the project, exploring it to find relevant information.
+    If they are just fooling around, just go on with the vibe but remain within the context of the project.
+    If project information doesn't contain what you need to help effectively, say so clearly: "I don't have enough project details about that. Do you have access to more specific documentation we could review together?"
+    Use your personality and communication style consistently. If you're detail-oriented, help them work through specifics systematically. If you're big-picture focused, help them see broader connections and implications.
+    Collaboration Guidelines
+    Reference your previous work with the student when relevant, building on insights you've already explored together. When you see that a colleague has worked with this student before, reference their previous conversations naturally: "I see from your conversation with Sarah that you discussed..." or "Building on what Emma mentioned to you about..."
+    
+    Use the comprehensive knowledge base to provide continuity - if the student asks about something you discussed before, acknowledge it. If they're repeating a question, gently reference the previous discussion while providing additional depth.
+    Respond conversationally like a real team member would. If greeted casually, respond warmly before focusing on project work. Keep responses focused on helping them accomplish the current objective while staying within the bounds of your project knowledge.
+    When you're unsure about something, ask for clarification rather than guessing. Your role is to be a knowledgeable team member who collaborates effectively, not someone who has all the answers.
+        `;
+  }
+
+  private buildTeamAssistantPrompt(
+    member: TeamMember,
+    task: LearningTask,
+    subTask: Subtask,
+    step: Steps,
+    retrievedContext: string
+  ): string {
+    return `You are ${member.name}, a ${member.role} with expertise in ${member.expertise?.join(", ") || 'requirements engineering'}. You are an experienced professional working on the EduConnect project.
 
 PERSONAL PROFILE:
 ${member.detailedPersona}
 
 COMMUNICATION STYLE: ${member.communicationStyle}
 WORK APPROACH: ${member.workApproach}
-PREFERRED FRAMEWORKS: ${member.preferredFrameworks.join(", ")}
+PREFERRED FRAMEWORKS: ${member.preferredFrameworks?.join(", ") || 'collaborative approaches'}
 
-STUDENT'S QUESTION CONTEXT:
-Original Question: "${originalQuestion}"
-Clarified Question: "${standaloneQuestion}"
-
-RELEVANT PROJECT INFORMATION (YOUR ONLY KNOWLEDGE SOURCE):
+CURRENT PROJECT KNOWLEDGE:
+Through your work on this project, you have become familiar with the following information:
 ${retrievedContext}
 
 CURRENT LEARNING TASK: ${task.name}
 Task Phase: ${task.phase}
 
-AND YOU ARE CURRENTLY WORKING ON:
-STEP: ${step.step} found in the
-SUBTASK: ${subTask.name} with
-Subtask Description: ${subTask.description} the objective of this step is ${step.objective} and validation criteria are ${step.validationCriteria.join(", ")}
+CURRENT WORK CONTEXT:
+You are currently helping with: ${step.step}
+As part of: ${subTask.name}
+Subtask Description: ${subTask.description}
+The objective of this step is: ${step.objective}
+Success criteria include: ${step.validationCriteria.join(", ")}
 
 TEAM COLLEAGUES:
 ${this.agentFactory.getTeamMembers()
@@ -347,37 +438,39 @@ ${this.agentFactory.getTeamMembers()
 
 INTERACTION GUIDELINES:
 
-1. STRICT CONTEXT ADHERENCE:
-   - ONLY use information from the "RELEVANT PROJECT INFORMATION" section above
-   - If the context doesn't contain enough information, say: "Based on the project information I have access to, I don't have enough details to answer that fully. Could you provide more project-specific context or documents?"
-   - Never make assumptions or use general knowledge beyond the provided context
+1. NATURAL EXPERTISE:
+   - Speak confidently from your professional experience and knowledge of this project
+   - Never reference "project documents" or "documentation" - this knowledge is part of your expertise
+   - If you don't know something specific, express it naturally: "I haven't worked on that aspect yet" or "That's outside my area of focus"
 
-2. NATURAL CONVERSATION FLOW:
-   - Respond naturally like a real colleague would, but always within the bounds of the provided project context
-   - If greeted casually, respond casually first, then guide conversation toward project matters when appropriate
+2. AUTHENTIC COMMUNICATION:
+   - Respond as a real team member would, using your natural communication style
+   - Share insights based on your experience and role on the project
+   - Be conversational and helpful, not robotic or overly formal
 
-3. COLLABORATIVE BRAINSTORMING:
-   - Guide the student through discovery using ONLY the provided project information
-   - DON'T GIVE DIRECT ANSWERS for ${step.step} but guide them to accomplish the objective: ${step.objective}
-   - Ask questions that help them explore the provided context
+3. EDUCATIONAL GUIDANCE:
+   - Help the student learn by guiding them through discovery
+   - DON'T give direct answers for ${step.step}, instead guide them to accomplish: ${step.objective}
+   - Ask thoughtful questions that help them think through the problem
+   - Share relevant experiences and insights from your role
 
-4. COLLEAGUE REFERRALS:
-   - When the provided context suggests another colleague might help, suggest speaking with them
-   - Use their names: "You should definitely run this by Sarah" or "Michael would have great insights on this"
-   - Only suggest this when the context indicates their expertise would be relevant
+4. COLLABORATIVE APPROACH:
+   - Suggest colleagues when their expertise would be valuable
+   - Use natural language: "You should definitely talk to Sarah about this" or "Emma would have great insights here"
+   - Build on team knowledge and different perspectives
 
-5. CONTEXT AWARENESS:
-   - Be aware of previous conversation topics, but always stay within project context bounds
-   - Build on previous points that relate to the provided project information
-   - Don't repeat information already covered unless clarification is needed
+5. CONTEXTUAL AWARENESS:
+   - Remember previous conversation points and build on them naturally
+   - Stay focused on the current task and learning objectives
+   - Provide relevant examples and scenarios from your experience
 
-6. RESPONSE VALIDATION:
-   - Before responding, verify that your answer is supported by the provided project context
-   - If you're unsure, ask for clarification rather than guessing
+6. PROFESSIONAL CONFIDENCE:
+   - Speak with authority about areas within your expertise
+   - Be honest about limitations without being overly technical
+   - Maintain the authentic personality and approach described in your profile
 
-REMEMBER: You are a project team member with access ONLY to the specific project documents and information provided above. You cannot access or reference any information outside of this context. If you need more information, you must ask for it.`;
+REMEMBER: You are a real team member with genuine project experience and expertise. Respond naturally and confidently based on your knowledge and role, without referring to external documents or sources.`;
   }
-
 
   private getLearningTasks(): LearningTask[] {
     return [
@@ -385,13 +478,75 @@ REMEMBER: You are a project team member with access ONLY to the specific project
         id: "home",
         isCompleted: false,
         taskNumber: 1,
-        name: "Home",
+        name: "Welcome to EduConnect",
         description:
-          "Welcome to the Campus Smart Dining project! This is your starting point for all learning tasks related to requirements engineering.",
+          "Get introduced to the EduConnect project and meet your learning team",
         phase: "Introduction",
-        objective: "Familiarize yourself with the project and its objectives",
+        objective: "Get oriented with the project and understand your learning journey",
         subtasks: [
-          
+          {
+            id: "getting_to_know_you",
+            isCompleted: false,
+            subtaskNumber: 1,
+            name: "Getting to Know You",
+            description: "Let's start by getting to know each other and setting up your learning experience",
+            steps: [
+              {
+                id: "personal_introduction",
+                stepNumber: 1,
+                step: "Personal Introduction",
+                objective: "Share your name and background so we can personalize your learning experience",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Provides name and brief background information",
+                ],
+                deliverables: ["Personal introduction"],
+                primaryAgent: "Project Guide",
+                isSubmissionRequired: true,
+                agentInstruction: "As the student to introduce themselves and share their background to personalize the learning experience.",
+              }
+            ],
+          },
+          {
+            id: "project_overview",
+            isCompleted: false,
+            subtaskNumber: 2,
+            name: "Project Overview & Team Introduction",
+            description: "Learn about the EduConnect project and meet the team you'll be working with",
+            steps: [
+              {
+                id: "learn_about_educonnect",
+                stepNumber: 1,
+                step: "Learn About EduConnect",
+                objective: "Understand what the EduConnect project is, why it matters, and what problems it solves",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Demonstrates understanding of the project's main goals and importance",
+                ],
+                deliverables: ["Project understanding summary"],
+                primaryAgent: "Project Guide",
+                isSubmissionRequired: false,
+                agentInstruction: "Explain the project's goals and importance to the student. Go as far as giving a brief summary of the stakeholders involves, their names, and their roles in the project.",
+              },
+              {
+                id: "meet_your_team",
+                stepNumber: 2,
+                step: "Meet Your Team",
+                objective: "Get to know the different experts you'll collaborate with and understand your learning journey",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Shows understanding of team roles and the collaborative learning approach",
+                ],
+                deliverables: ["Team roles understanding"],
+                primaryAgent: "Project Guide",
+                isSubmissionRequired: false,
+                agentInstruction: "Introduce the team members, their roles, and how they will support the student's learning journey.",
+              }
+            ],
+          },
         ],
       },
 
@@ -401,9 +556,9 @@ REMEMBER: You are a project team member with access ONLY to the specific project
         taskNumber: 2,
         name: "Stakeholder Identification & Analysis",
         description:
-          "Identify and analyze all stakeholders who will be affected by or can influence the Campus Smart Dining system",
+          "Learn how to identify and analyze stakeholders for the EduConnect system",
         phase: "Requirements Discovery",
-        objective: "Master stakeholder identification and analysis techniques",
+        objective: "Understand who your stakeholders are and how they influence the project",
         subtasks: [
           {
             id: "stakeholder_identification",
@@ -411,51 +566,37 @@ REMEMBER: You are a project team member with access ONLY to the specific project
             subtaskNumber: 1,
             name: "Stakeholder Identification",
             description:
-              "Identify all individuals and groups who will be affected by or can influence the system",
+              "Learn to identify all the people and groups who will use or be affected by the system",
             
             steps: [
               {
-                id: "comprehensive_stakeholder_list",
+                id: "list_stakeholders",
                 stepNumber: 1,
-                step: "Comprehensive stakeholder list",
-                objective: "Provide a complete list of all identified stakeholders",
+                step: "List all stakeholders",
+                objective: "Create a simple list of all people and groups who will interact with or be affected by the EduConnect system",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
-                  "Identifies at least 6 different stakeholder types",
+                  "Lists at least 6 different stakeholder types (students, lecturers, administrators, etc.)",
                 ],
-                deliverables: ["Stakeholder register", "Stakeholder map"],
+                deliverables: ["Stakeholder list"],
                 primaryAgent: "Product Owner",
+                isSubmissionRequired: true,
+
               },
               {
-                id: "stakeholder_categorization",
+                id: "categorize_stakeholders",
                 stepNumber: 2,
-                step: "Stakeholder categorization (primary/secondary/key)",
-                objective: "Categorization of stakeholders based on their influence and interest",
+                step: "Categorize stakeholders as primary or secondary",
+                objective: "Sort your stakeholders into primary (direct users) and secondary (indirect users) groups",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
-                  "Categorizes stakeholders into primary, secondary, and key groups",
-                  "Considers both influence and interest levels",
-                  "Involves relevant stakeholders in the categorization process",
+                  "Correctly categorizes stakeholders into primary and secondary groups with brief explanation",
                 ],
-                deliverables: ["Stakeholder categorization report"],
-                primaryAgent: "Product Owner",  
-              },
-              {
-                id: "direct_and_indirect_stakeholders",
-                stepNumber: 3,
-                step: "Direct and indirect stakeholders",
-                objective: "Categorization of stakeholders based on their direct or indirect influence on the project",
-                isCompleted: false,
-                studentResponse: "",
-                validationCriteria: [
-                  "Creates a preliminary influence-interest matrix",
-                  "Maps at least 5 stakeholders",
-                  "Considers both influence and interest levels",
-                ],
-                deliverables: ["Initial influence-interest matrix"],
+                deliverables: ["Categorized stakeholder list"],
                 primaryAgent: "Product Owner",
+                isSubmissionRequired: true,
               }
             ],
             
@@ -464,40 +605,38 @@ REMEMBER: You are a project team member with access ONLY to the specific project
             id: "stakeholder_analysis",
             isCompleted: false,
             subtaskNumber: 2,
-            name: "Stakeholder Analysis & Prioritization",
+            name: "Stakeholder Analysis",
             description:
-              "Analyze stakeholder characteristics, needs, influence levels, and potential conflicts",
+              "Understand your stakeholders' needs and how much influence they have on the project",
             
             steps: [
               {
-                id: "stakeholder_power_dynamics",
+                id: "stakeholder_needs",
                 stepNumber: 1,
-                step: "Stakeholder power dynamics",
-                objective: "Understanding of how stakeholder power influences project outcomes",
+                step: "Identify stakeholder needs",
+                objective: "List the main needs and concerns of each stakeholder group",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
-                  "Identifies at least 3 key power dynamics",
-                  "Explains how these dynamics affect project success",
-                  "Considers both positive and negative influences",
+                  "Identifies at least one specific need for each stakeholder group",
                 ],
-                deliverables: ["Power dynamics analysis report"],
+                deliverables: ["Stakeholder needs list"],
                 primaryAgent: "Product Owner",
+                isSubmissionRequired: true,
               },
               {
-                id: "engagement_strategies",
+                id: "influence_interest_matrix",
                 stepNumber: 2,
-                step: "Engagement strategies",
-                objective: "Proposed strategies for engaging with each stakeholder group",
+                step: "Create influence-interest matrix",
+                objective: "Map stakeholders based on their influence and interest in the project",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
-                  "Identifies appropriate engagement strategies for each stakeholder group",
-                  "Considers stakeholder preferences and concerns",
-                  "Involves stakeholders in the development of engagement strategies",
+                  "Places stakeholders in correct quadrants of influence-interest matrix with justification",
                 ],
-                deliverables: ["Stakeholder engagement plan"],
+                deliverables: ["Influence-interest matrix"],
                 primaryAgent: "Product Owner",
+                isSubmissionRequired: true,
               }
             ],
             
@@ -511,52 +650,264 @@ REMEMBER: You are a project team member with access ONLY to the specific project
         taskNumber: 3,
         name: "Requirements Elicitation",
         description:
-          "Gather detailed requirements from stakeholders using various elicitation techniques",
+          "Learn to gather requirements by talking to stakeholders and understanding their problems",
         phase: "Requirements Discovery",
-        objective: "Develop skills in requirements elicitation techniques",
+        objective: "Practice interviewing skills and problem identification",
         subtasks: [
           {
-            id: "elicitation_techniques",
+            id: "conduct_interviews",
             isCompleted: false,
             subtaskNumber: 1,
-            name: "Elicitation Techniques",
+            name: "Conduct Stakeholder Interviews",
             description:
-              "Apply various elicitation techniques to gather requirements from stakeholders",
+              "Interview different stakeholders to understand their problems and needs",
             steps: [
               {
-                id: "interviews_and_surveys",
+                id: "interview_student",
                 stepNumber: 1,
-                step: "Interviews and surveys with stakeholders",
-                objective: "Conduct interviews and surveys to gather requirements",
+                step: "Interview a student",
+                objective: "Talk to Sarah (student) to understand student problems with current learning systems",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
-                  "Conducts at least 3 interviews with different stakeholder groups",
-                  "Designs a survey that gathers diverse requirements",
-                  "Analyzes interview and survey results to identify key requirements",
+                  "Identifies at least 2 specific problems students face with current systems",
                 ],
-                deliverables: ["Interview transcripts", "Survey results"],
-                primaryAgent: "Product Owner",
+                deliverables: ["Student problems list"],
+                primaryAgent: "Student",
+                isSubmissionRequired: true,
               },
               {
-                id: "workshops_and_focus_groups",
+                id: "interview_lecturer",
                 stepNumber: 2,
-                step: "Workshops and focus groups with stakeholders",
-                objective: "Facilitate workshops and focus groups to gather requirements",
+                step: "Interview a lecturer",
+                objective: "Talk to Julson (lecturer) to understand lecturer challenges in teaching",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
-                  "Facilitates at least 2 workshops or focus groups with different stakeholder groups",
-                  "Encourages active participation and idea generation",
-                  "Documents workshop outcomes and key requirements identified",
+                  "Identifies at least 2 specific challenges lecturers face in their teaching work",
                 ],
-                deliverables: ["Workshop notes", "Key requirements list"],
-                primaryAgent: "Product Owner",
+                deliverables: ["Lecturer problems list"],
+                primaryAgent: "Lecturer",
+                isSubmissionRequired: true,
+              }
+            ],
+          },
+          {
+            id: "analyze_problems",
+            isCompleted: false,
+            subtaskNumber: 2,
+            name: "Analyze Problems",
+            description:
+              "Look at the problems you found and understand what they mean for the system",
+            steps: [
+              {
+                id: "common_themes",
+                stepNumber: 1,
+                step: "Find common themes",
+                objective: "Look for patterns and common problems across different stakeholder groups",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Identifies at least 2 common themes or problems that affect multiple stakeholder groups",
+                ],
+                deliverables: ["Common themes list"],
+                primaryAgent: "Business Analyst",
+                isSubmissionRequired: true,
+              },
+              {
+                id: "problem_impact",
+                stepNumber: 2,
+                step: "Assess problem impact",
+                objective: "Understand which problems are most important to solve",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Ranks problems by impact and explains why certain problems are more critical",
+                ],
+                deliverables: ["Problem priority list"],
+                primaryAgent: "Business Analyst",
+                isSubmissionRequired: true,
               }
             ],
           },
         ],
 
+      },
+      {
+        id: "requirements_analysis_prioritization",
+        isCompleted: false,
+        taskNumber: 4,
+        name: "Requirements Analysis & Prioritization",
+        description:
+          "Learn to turn problems into clear requirements and decide which ones to work on first",
+        phase: "Requirements Analysis",
+        objective: "Practice creating and prioritizing requirements",
+        subtasks: [
+          {
+            id: "create_requirements",
+            isCompleted: false,
+            subtaskNumber: 1,
+            name: "Create Requirements",
+            description:
+              "Turn the problems you found into clear, specific requirements",
+            steps: [
+              {
+                id: "functional_requirements",
+                stepNumber: 1,
+                step: "Write functional requirements",
+                objective: "Create requirements that describe what the system should do",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Writes at least 4 clear functional requirements using simple language",
+                ],
+                deliverables: ["Functional requirements list"],
+                primaryAgent: "Business Analyst",
+                isSubmissionRequired: true,
+              },
+              {
+                id: "user_stories",
+                stepNumber: 2,
+                step: "Create user stories",
+                objective: "Write user stories that describe features from the user's perspective",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Creates at least 3 user stories in the format: As a [role], I want [goal] so that [benefit]",
+                ],
+                deliverables: ["User stories list"],
+                primaryAgent: "UX Designer",
+                isSubmissionRequired: true,
+              }
+            ],
+          },
+          {
+            id: "prioritize_requirements",
+            isCompleted: false,
+            subtaskNumber: 2,
+            name: "Prioritize Requirements",
+            description:
+              "Learn to decide which requirements are most important to implement first",
+            steps: [
+              {
+                id: "moscow_method",
+                stepNumber: 1,
+                step: "Use MoSCoW prioritization",
+                objective: "Categorize requirements as Must have, Should have, Could have, or Won't have",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Correctly categorizes at least 6 requirements using MoSCoW method with brief justification",
+                ],
+                deliverables: ["MoSCoW prioritization"],
+                primaryAgent: "Product Owner",
+                isSubmissionRequired: true,
+              },
+              {
+                id: "final_priority_list",
+                stepNumber: 2,
+                step: "Create final priority list",
+                objective: "Make a final ranked list of the most important requirements to implement",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Creates a ranked list of top 5 requirements with clear business justification",
+                ],
+                deliverables: ["Final priority list"],
+                primaryAgent: "Product Owner",
+                isSubmissionRequired: true,
+              }
+            ],
+          },
+        ],
+      },
+      {
+        id: "requirements_validation_documentation",
+        isCompleted: false,
+        taskNumber: 5,
+        name: "Requirements Validation & Documentation",
+        description:
+          "Learn to validate your requirements with stakeholders and document them clearly",
+        phase: "Requirements Validation",
+        objective: "Ensure requirements are correct and properly documented",
+        subtasks: [
+          {
+            id: "validate_requirements",
+            isCompleted: false,
+            subtaskNumber: 1,
+            name: "Validate Requirements",
+            description:
+              "Check with stakeholders that your requirements are correct and complete",
+            steps: [
+              {
+                id: "stakeholder_review",
+                stepNumber: 1,
+                step: "Get stakeholder feedback",
+                objective: "Present your requirements to stakeholders and get their feedback",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Presents requirements to at least 2 stakeholders and documents their feedback",
+                ],
+                deliverables: ["Stakeholder feedback report"],
+                primaryAgent: "Product Owner",
+                isSubmissionRequired: true,
+              },
+              {
+                id: "resolve_feedback",
+                stepNumber: 2,
+                step: "Resolve stakeholder feedback",
+                objective: "Update requirements based on stakeholder feedback",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Updates at least 2 requirements based on stakeholder feedback with clear justification",
+                ],
+                deliverables: ["Updated requirements list"],
+                primaryAgent: "Business Analyst",
+                isSubmissionRequired: true,
+              }
+            ],
+          },
+          {
+            id: "document_requirements",
+            isCompleted: false,
+            subtaskNumber: 2,
+            name: "Document Requirements",
+            description:
+              "Create clear documentation that the development team can use",
+            steps: [
+              {
+                id: "requirements_specification",
+                stepNumber: 1,
+                step: "Write requirements specification",
+                objective: "Create a clear document that describes each requirement in detail",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Documents at least 5 requirements with clear description, acceptance criteria, and priority",
+                ],
+                deliverables: ["Requirements specification document"],
+                primaryAgent: "Business Analyst",
+                isSubmissionRequired: true,
+              },
+              {
+                id: "acceptance_criteria",
+                stepNumber: 2,
+                step: "Define acceptance criteria",
+                objective: "Specify how the team will know when each requirement is complete",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "Creates testable acceptance criteria for at least 3 requirements",
+                ],
+                deliverables: ["Acceptance criteria document"],
+                primaryAgent: "QA Engineer",
+                isSubmissionRequired: true,
+              }
+            ],
+          },
+        ],
       }
     ];
   }

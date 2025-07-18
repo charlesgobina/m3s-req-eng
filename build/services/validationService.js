@@ -6,17 +6,16 @@ export class ValidationService {
         this.memoryService = memoryService;
         this.agentFactory = agentFactory;
     }
-    async validateSubmission(submission, taskId, subTask, step, sessionId, learningTasks, generateStandaloneQuestion, retrieveRelevantContext) {
+    async validateSubmission(submission, taskId, subTask, step, sessionId, userId, learningTasks, retrieveRelevantContext) {
         const task = learningTasks.find((t) => t.id === taskId);
         if (!task)
             throw new Error("Invalid task");
-        // Generate standalone question and retrieve context for validation
-        const standaloneQuestion = await generateStandaloneQuestion(submission);
-        const retrievedContext = await retrieveRelevantContext(standaloneQuestion);
+        // Retrieve context for validation using the original submission
+        const retrievedContext = await retrieveRelevantContext(submission);
         const systemPrompt = this.buildValidationPrompt(task, subTask, step, retrievedContext);
         const threadId = `${sessionId}_validation_${taskId}`;
-        // Get or create memory for validation thread
-        const validationMemory = this.memoryService.getConversationMemory(threadId);
+        // Get progress-aware memory for validation thread
+        const validationMemory = this.memoryService.getSmartProgressMemory(userId, taskId, subTask.id, step.id);
         const memoryMessages = await validationMemory.chatHistory.getMessages();
         const managedMessages = [
             new SystemMessage(systemPrompt),

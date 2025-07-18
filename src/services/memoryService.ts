@@ -17,7 +17,7 @@ export class MemoryService {
     if (!this.conversationMemories.has(sessionId)) {
       const memory = new ConversationSummaryBufferMemory({
         llm: this.questionModel,
-        maxTokenLimit: 1000,
+        maxTokenLimit: 2000,
         returnMessages: true,
       });
 

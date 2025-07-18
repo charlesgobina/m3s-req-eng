@@ -28,6 +28,8 @@ export interface Steps {
   validationCriteria: string[];
   deliverables: string[];
   primaryAgent: string;
+  isSubmissionRequired: boolean;
+  agentInstruction?: string;
 }
 
 export interface LearningTask {
@@ -85,6 +87,15 @@ export interface ValidationResult {
   feedback: string;
   recommendations: string;
   passed: boolean;
+}
+
+export interface WelcomeMessage {
+  id: string;
+  role: string;
+  content: string;
+  timestamp: Date;
+  agentRole?: string;
+  isWelcomeMessage: boolean;
 }
 
 export interface ChatRequest {

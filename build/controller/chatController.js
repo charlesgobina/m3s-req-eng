@@ -7,6 +7,10 @@ export class ChatController {
     async streamChat(req, res) {
         try {
             const { message, taskId, subtask, step, sessionId, agentRole, } = req.body;
+            const userId = req.user?.uid;
+            if (!userId) {
+                return res.status(401).json({ error: "User not authenticated" });
+            }
             if (!message || !taskId || !sessionId || !step) {
                 return res.status(400).json({ error: "Missing required fields" });
             }
@@ -27,7 +31,7 @@ export class ChatController {
             // Start streaming chat response
             res.write(`data: {"type": "response_start", "agent": "${selectedAgent}"}\n\n`);
             // Get the stream
-            const responseStream = await this.agentService.chatWithAgent(message, taskId, subtask, step, selectedAgent, sessionId);
+            const responseStream = await this.agentService.chatWithAgent(message, taskId, subtask, step, selectedAgent, sessionId, userId);
             console.log("Starting stream consumption..."); // Debug log
             // Process the stream
             for await (const chunk of responseStream) {
@@ -67,6 +71,10 @@ export class ChatController {
         try {
             const { taskId, subtaskId, stepId } = req.params;
             const userId = req.user?.uid;
+            console.log("###############################");
+            console.log(userId);
+            console.log();
+            console.log("#################################");
             if (!userId) {
                 return res.status(401).json({
                     error: "User not authenticated"
@@ -169,19 +177,19 @@ export class ChatController {
      */
     async createWelcomeMessage(req, res) {
         try {
-            const { taskId, subtaskId, stepId, taskName, stepObjective } = req.body;
+            const { taskId, subtaskId, stepId } = req.body;
             const userId = req.user?.uid;
             if (!userId) {
                 return res.status(401).json({
                     error: "User not authenticated"
                 });
             }
-            if (!taskId || !subtaskId || !stepId || !taskName || !stepObjective) {
+            if (!taskId || !subtaskId || !stepId) {
                 return res.status(400).json({
-                    error: "Missing required fields: taskId, subtaskId, stepId, taskName, stepObjective"
+                    error: "Missing required fields: taskId, subtaskId, stepId"
                 });
             }
-            const welcomeMessage = await chatService.createInitialWelcomeMessage(userId, taskId, subtaskId, stepId, taskName, stepObjective);
+            const welcomeMessage = await chatService.createInitialWelcomeMessage(userId, taskId, subtaskId, stepId);
             res.json({
                 success: true,
                 message: welcomeMessage
