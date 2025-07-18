@@ -456,6 +456,7 @@ export class ComprehensiveMemoryService {
     }
     // Truncate context if too long
     truncateContext(context, maxLength) {
+        console.log(`🔄 [CONTEXT-TRUNCATE] Truncating context from ${context.length} to max ${maxLength} characters`);
         if (context.length <= maxLength) {
             return context;
         }
