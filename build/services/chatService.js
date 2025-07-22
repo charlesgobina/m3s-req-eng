@@ -27,7 +27,8 @@ export class ChatService {
         // Initialize AgentService for accessing team members
         this.agentService = new AgentService();
         this.model = new ChatGroq({
-            model: "gemma2-9b-it",
+            // model: "gemma2-9b-it",
+            model: "llama-3.3-70b-versatile",
             temperature: 0,
             apiKey: process.env.GROQ_API_KEY,
             streaming: true,
