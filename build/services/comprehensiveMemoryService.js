@@ -1,4 +1,4 @@
-import { OpenAIEmbeddings } from '@langchain/openai';
+import { transformerEmbeddings } from '../utils/transformerEmbeddings.js';
 import { createClient } from '@supabase/supabase-js';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { db } from '../config/adminConfig.js';
@@ -12,9 +12,10 @@ export class ComprehensiveMemoryService {
     textSplitter;
     maxTokenLimit = 2000; // Using existing token limit
     constructor(questionModel) {
-        this.embeddings = new OpenAIEmbeddings({
-            apiKey: process.env.OPENAI_API_KEY
-        });
+        // this.embeddings = new OpenAIEmbeddings({ 
+        //   apiKey: process.env.OPENAI_API_KEY as string 
+        // });
+        this.embeddings = transformerEmbeddings;
         this.supabaseClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_API_KEY);
         this.questionModel = questionModel;
         this.textSplitter = new RecursiveCharacterTextSplitter({

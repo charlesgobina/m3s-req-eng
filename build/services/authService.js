@@ -31,6 +31,11 @@ export class AuthService {
                 user.isRegistrationApproved = false;
                 firestoreData.isRegistrationApproved = false;
             }
+            // Only add isLecturerApproved for lecturers
+            if (userData.role === 'lecturer') {
+                user.isLecturerApproved = false;
+                firestoreData.isLecturerApproved = false;
+            }
             await db.collection('users').doc(userRecord.uid).set(firestoreData);
             // Generate custom token for immediate login
             const customToken = await auth.createCustomToken(userRecord.uid);
@@ -93,6 +98,14 @@ export class AuthService {
                 // Check if student registration is approved
                 if (!user.isRegistrationApproved) {
                     throw new Error('registration-not-approved');
+                }
+            }
+            // Only add isLecturerApproved for lecturers
+            if (userData.role === 'lecturer') {
+                user.isLecturerApproved = userData.isLecturerApproved;
+                // Check if lecturer registration is approved
+                if (!user.isLecturerApproved) {
+                    throw new Error('lecturer-not-approved');
                 }
             }
             // Generate custom token for the verified user

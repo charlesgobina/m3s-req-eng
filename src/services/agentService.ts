@@ -5,22 +5,24 @@ import { HuggingFaceInference } from "@langchain/community/llms/hf";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import retriever from "../utils/retriever.js";
 import { combineDocuments } from "../utils/combineDocuments.js";
-import {
-  LearningTask,
-  TeamMember,
-  Subtask,
-  Steps,
-} from "../types/index.js";
+import { LearningTask, TeamMember, Subtask, Steps } from "../types/index.js";
 import { EnhancedMemoryService } from "./enhancedMemoryService.js";
 import { AgentFactory } from "./agentFactory.js";
 import { ValidationService } from "./validationService.js";
 import dotenv from "dotenv";
 dotenv.config();
 
-
 export class AgentService {
-  private model: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference;
-  private questionModel: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference;
+  private model:
+    | ChatOpenAI
+    | ChatGroq
+    | ChatGoogleGenerativeAI
+    | HuggingFaceInference;
+  private questionModel:
+    | ChatOpenAI
+    | ChatGroq
+    | ChatGoogleGenerativeAI
+    | HuggingFaceInference;
   private learningTasks: LearningTask[];
   private memoryService: EnhancedMemoryService;
   private agentFactory: AgentFactory;
@@ -45,8 +47,11 @@ export class AgentService {
     // Initialize services
     this.memoryService = new EnhancedMemoryService(this.questionModel);
     this.agentFactory = new AgentFactory(this.model);
-    this.validationService = new ValidationService(this.memoryService, this.agentFactory);
-    
+    this.validationService = new ValidationService(
+      this.memoryService,
+      this.agentFactory
+    );
+
     this.learningTasks = this.getLearningTasks();
   }
 
@@ -54,34 +59,31 @@ export class AgentService {
     console.log("AgentService initialized");
   }
 
-
-
-
   // Retrieve relevant context using user question
   private async retrieveRelevantContext(userQuestion: string): Promise<string> {
     try {
       const relevantDocs = await retriever._getRelevantDocuments(userQuestion);
-      
+
       // Log retrieved documents for debugging
-      console.log('\n=== RETRIEVED DOCUMENTS ===');
+      console.log("\n=== RETRIEVED DOCUMENTS ===");
       console.log(`Query: "${userQuestion}"`);
       console.log(`Documents found: ${relevantDocs.length}`);
-      
+
       if (relevantDocs.length === 0) {
-        console.log('No documents retrieved from vector store');
+        console.log("No documents retrieved from vector store");
         return "No specific project context found for this question.";
       }
 
       relevantDocs.forEach((doc, index) => {
         console.log(`\n--- Document ${index + 1} ---`);
-        console.log(`Source: ${doc.metadata?.source || 'Unknown'}`);
+        console.log(`Source: ${doc.metadata?.source || "Unknown"}`);
         console.log(`Content preview: ${doc.pageContent.substring(0, 150)}...`);
       });
-      console.log('=== END RETRIEVED DOCUMENTS ===\n');
+      console.log("=== END RETRIEVED DOCUMENTS ===\n");
 
       return combineDocuments(relevantDocs);
     } catch (error) {
-      console.error('Error retrieving context:', error);
+      console.error("Error retrieving context:", error);
       return "Error retrieving project context.";
     }
   }
@@ -105,7 +107,8 @@ TASK DESCRIPTION: ${task.description}
 STUDENT MESSAGE: "${message}"
 
 AVAILABLE TEAM MEMBERS:
-${this.agentFactory.getTeamMembers()
+${this.agentFactory
+  .getTeamMembers()
   .map((m) => `- ${m.role} (${m.name}): ${m.expertise.join(", ")}`)
   .join("\n")}
 
@@ -125,9 +128,9 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     const suggestedRole =
       response.messages[response.messages.length - 1].content.trim();
 
-    const validRole = this.agentFactory.getTeamMembers().find(
-      (m) => m.role.toLowerCase() === suggestedRole.toLowerCase()
-    );
+    const validRole = this.agentFactory
+      .getTeamMembers()
+      .find((m) => m.role.toLowerCase() === suggestedRole.toLowerCase());
 
     return validRole ? validRole.role : "Business Analyst";
   }
@@ -142,7 +145,9 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     userId: string
   ): Promise<AsyncIterable<string>> {
     const task = this.learningTasks.find((t) => t.id === taskId);
-    const member = this.agentFactory.getTeamMembers().find((m) => m.role === agentRole);
+    const member = this.agentFactory
+      .getTeamMembers()
+      .find((m) => m.role === agentRole);
 
     if (!task || !subtask || !member) {
       throw new Error("Invalid task or team member");
@@ -157,29 +162,40 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     );
 
     // Handle different context based on role type
-    const intervieweeRoles = ['Student', 'Lecturer', 'Academic Advisor'];
+    const intervieweeRoles = ["Student", "Lecturer", "Academic Advisor"];
     const isInterviewee = intervieweeRoles.includes(member.role);
     const basicProjectContext = await this.retrieveRelevantContext(message);
 
     let systemPrompt: string;
-    
+
     if (isInterviewee) {
       // Interviewees only get basic project context
-      systemPrompt = this.buildIntervieweePrompt(member, task, subtask, step, basicProjectContext);
+      systemPrompt = this.buildIntervieweePrompt(
+        member,
+        task,
+        subtask,
+        step,
+        basicProjectContext
+      );
     } else {
       // Team members get comprehensive context
-      const comprehensiveContext = await this.memoryService.getComprehensiveContext(
-        userId,
-        agentRole,
-        message,
-        taskId,
-        subtask.id,
-        step.id
+      const comprehensiveContext =
+        await this.memoryService.getComprehensiveContext(
+          userId,
+          agentRole,
+          message,
+          taskId,
+          subtask.id,
+          step.id
+        );
+
+      systemPrompt = this.buildEnhancedTeamAssistantPrompt(
+        member,
+        task,
+        subtask,
+        step,
+        comprehensiveContext
       );
-
-
-
-      systemPrompt = this.buildEnhancedTeamAssistantPrompt(member, task, subtask, step, comprehensiveContext);
     }
 
     const agent = this.agentFactory.getTeamAgent(agentRole);
@@ -192,7 +208,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     const managedMessages = [
       new SystemMessage(systemPrompt),
       ...memoryMessages.slice(-4), // Keep last 4 messages (2 pairs)
-      new HumanMessage(message)
+      new HumanMessage(message),
     ];
 
     console.log(`\n=== MEMORY MANAGEMENT ===`);
@@ -200,7 +216,13 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     console.log(`Agent: ${agentRole}`);
     console.log(`Context: ${taskId}/${subtask.id}/${step.id}`);
     console.log(`Memory messages: ${memoryMessages.length}`);
-    console.log(`Role type: ${isInterviewee ? 'Interviewee (basic context)' : 'Team member (comprehensive context)'}`);
+    console.log(
+      `Role type: ${
+        isInterviewee
+          ? "Interviewee (basic context)"
+          : "Team member (comprehensive context)"
+      }`
+    );
     console.log(`=== END MEMORY ===\n`);
 
     // Use invoke for standard agent response
@@ -209,13 +231,11 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     });
 
     // Get the agent's response content
-    const agentResponse = response.messages[response.messages.length - 1].content;
+    const agentResponse =
+      response.messages[response.messages.length - 1].content;
 
     // Save conversation to memory
-    await memory.saveContext(
-      { input: message },
-      { output: agentResponse }
-    );
+    await memory.saveContext({ input: message }, { output: agentResponse });
 
     // Save agent insights for future reference
     await memory.saveAgentInsights(agentRole, message, agentResponse);
@@ -259,7 +279,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
       subTask,
       step,
       sessionId,
-      userId || 'unknown_user',
+      userId || "unknown_user",
       this.learningTasks,
       this.retrieveRelevantContext.bind(this)
     );
@@ -268,11 +288,13 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
   // Method to call when user completes a step
   async onStepCompletion(userId: string, stepData: any): Promise<void> {
     try {
-      console.log(`🎯 [STEP-COMPLETION] Processing completion for user ${userId}`);
-      
+      console.log(
+        `🎯 [STEP-COMPLETION] Processing completion for user ${userId}`
+      );
+
       // Refresh all conversation memories for this user to invalidate cache
       await this.memoryService.refreshUserMemories(userId);
-      
+
       // Notify comprehensive memory system about step change
       if (stepData.taskId && stepData.subtaskId && stepData.stepId) {
         await this.memoryService.onStepChange(
@@ -282,10 +304,12 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
           stepData.stepId
         );
       }
-      
-      console.log(`✅ Step completion processed and memories updated for user ${userId}`);
+
+      console.log(
+        `✅ Step completion processed and memories updated for user ${userId}`
+      );
     } catch (error) {
-      console.error('❌ Error processing step completion:', error);
+      console.error("❌ Error processing step completion:", error);
     }
   }
 
@@ -317,8 +341,6 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
   //   }
   // }
 
-
-
   private buildIntervieweePrompt(
     member: TeamMember,
     task: LearningTask,
@@ -327,16 +349,28 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     basicProjectContext: string
   ): string {
     return `
-    You are ${member.name}, a ${member.role} at the university. You are being interviewed by a student learning about requirements engineering for the EduConnect learning platform.
+    You are ${member.name}, a ${
+      member.role
+    } at the university. You are being interviewed by a STUDENT USER who is learning about requirements engineering, using EduConnect as a resource. 
+    
+    IMPORTANT: The user is NOT any of the example personas mentioned in the project documentation (such as Sarah Martinez, Professor Julson Kumar, etc.). Those are fictional examples for the project specification. You are speaking with a real student user who is different from these examples.
     Your Identity and Background
     ${member.detailedPersona}
-    You communicate with a ${member.communicationStyle} style, approach work through ${member.workApproach}, and have expertise in ${member.expertise.join(', ')}. Your personality is ${member.personality}.
+    You communicate with a ${
+      member.communicationStyle
+    } style, approach work through ${
+      member.workApproach
+    }, and have expertise in ${member.expertise.join(
+      ", "
+    )}. Your personality is ${member.personality}.
     Your Knowledge About EduConnect
     ${basicProjectContext}
     
-    IMPORTANT: You are an interviewee, not a core team member. You only know basic information about the EduConnect project. You should respond from your role's perspective as someone who would potentially use or be involved with the system, but you don't have detailed technical knowledge or access to internal project discussions.
+    IMPORTANT: You are an interviewee, not a core team member. You only know basic information about the EduConnect project. The project documentation contains example personas (like Sarah Martinez) - these are FICTIONAL EXAMPLES, not the person you're talking to. You should respond from your role's perspective as someone who would potentially use or be involved with the system, but you don't have detailed technical knowledge or access to internal project discussions.
     Core Behavior
-    You are being interviewed as a real person who would use educational technology, not as a consultant or technical expert. Share your authentic experiences, challenges, and needs from your daily work as a ${member.role}.
+    You are being interviewed as a real person who would use educational technology, not as a consultant or technical expert. Share your authentic experiences, challenges, and needs from your daily work as a ${
+      member.role
+    }.
     Respond conversationally using personal language like "I find that..." or "In my experience..." Keep responses focused on your actual needs and pain points rather than technical solutions. When you don't know something technical, say so honestly.
     Express genuine emotions about current systems you use - frustration with clunky interfaces, satisfaction with tools that work well, or confusion about complex features. Share specific examples from your routine when relevant.
     If asked about technical implementation details, redirect to your user perspective: "I'm not sure how that would work technically, but what I need is..."
@@ -353,123 +387,99 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     task: LearningTask,
     subTask: Subtask,
     step: Steps,
-    // basicProjectContext: string,
     comprehensiveContext: string
   ): string {
-    return `
-    You are ${member.name}, a ${member.role} on the EduConnect project team. You're helping a student learn requirements engineering through hands-on collaboration.
-    Your Identity and Background
-    ${member.detailedPersona}
-    You communicate with a ${member.communicationStyle} style and approach work through ${member.workApproach}. Your expertise includes ${member.expertise?.join(", ") || 'general requirements engineering'} and you prefer working with ${member.preferredFrameworks?.join(", ") || 'collaborative learning approaches'}.
-    Current Learning Context
-    The student is working on "${task.name}" during the ${task.phase} phase. Specifically, they're tackling "${step.step}" as part of "${subTask.name}" with the objective: ${step.objective}
-    Success for this step means: ${step.validationCriteria?.join(", ") || 'completing the objective'}
+    return member.role === "Project Guide"
+      ? `
+### ROLE & MISSION
+You are ${member.name}, the ${
+          member.role
+        } assisting a STUDENT USER who is learning requirement engineering. EduConnect is a sample project designed to enhance the student's understanding on requirement engineering concepts. 
 
-   
+CRITICAL: The user is a REAL STUDENT, not any of the fictional example personas from the project documentation (like Sarah Martinez, Professor Julson Kumar, etc.). Those are just examples in the project specification. Treat the user as a unique individual learning about requirements engineering. Your mission is to act as a collaborative mentor, guiding the student through a specific requirements engineering task. You are a teacher and a teammate, not just a generic assistant.
 
-    Here is the comprehensive knowledge base of the project context and student's learning journey, mostly about their progress, previous work.
-    ${comprehensiveContext}
-    
-    IMPORTANT: The comprehensive knowledge base contains:
-    - The EduConnect project context
-    - This student's complete learning progress and previous work
-    - Insights and observations from your team colleagues
-    
-    Use this information to:
-    - Reference specific previous work the student has completed
-    - Build on conversations you or colleagues have had with them
-    - Understand their learning patterns and progress
-    - Provide personalized guidance based on their journey
-    Your Team Colleagues
-    ${this.agentFactory.getTeamMembers()
-    .filter((m) => m.role !== member.role)
-    .map((m) => `${m.name} (${m.role}) - expertise in ${m.expertise?.slice(0, 2).join(", ") || 'requirements engineering'}`)
-    .join(", ")}
-    Core Behavior
-    You are a helpful team member collaborating with a student, not their instructor. Guide them through discovery and problem-solving using the project information you have access to.
-    When the student asks RELEVANT questions, act like an encyclopedia of the project, exploring it to find relevant information.
-    If they are just fooling around, just go on with the vibe but remain within the context of the project.
-    If project information doesn't contain what you need to help effectively, say so clearly: "I don't have enough project details about that. Do you have access to more specific documentation we could review together?"
-    Use your personality and communication style consistently. If you're detail-oriented, help them work through specifics systematically. If you're big-picture focused, help them see broader connections and implications.
-    Collaboration Guidelines
-    Reference your previous work with the student when relevant, building on insights you've already explored together. When you see that a colleague has worked with this student before, reference their previous conversations naturally: "I see from your conversation with Sarah that you discussed..." or "Building on what Emma mentioned to you about..."
-    
-    Use the comprehensive knowledge base to provide continuity - if the student asks about something you discussed before, acknowledge it. If they're repeating a question, gently reference the previous discussion while providing additional depth.
-    Respond conversationally like a real team member would. If greeted casually, respond warmly before focusing on project work. Keep responses focused on helping them accomplish the current objective while staying within the bounds of your project knowledge.
-    When you're unsure about something, ask for clarification rather than guessing. Your role is to be a knowledgeable team member who collaborates effectively, not someone who has all the answers.
-        `;
-  }
+### YOUR PERSONA
+- **Identity**: ${member.detailedPersona}
+- **Communication Style**: ${member.communicationStyle}
+- **Work Approach**: ${member.workApproach}
+- **Expertise**: ${
+          member.expertise?.join(", ") || "general requirements engineering"
+        }
 
-  private buildTeamAssistantPrompt(
-    member: TeamMember,
-    task: LearningTask,
-    subTask: Subtask,
-    step: Steps,
-    retrievedContext: string
-  ): string {
-    return `You are ${member.name}, a ${member.role} with expertise in ${member.expertise?.join(", ") || 'requirements engineering'}. You are an experienced professional working on the EduConnect project.
+### CURRENT LEARNING CONTEXT
+- **Task**: The student is working on the "${task.name}" task in the "${
+          task.phase
+        }" phase.
+- **Step**: They are focused on "${step.step}" within the "${
+          subTask.name
+        }" subtask.
+- **Objective**: The goal is to: ${step.objective}.
+- **Success Criteria**: Success is defined by: ${
+          step.validationCriteria?.join(", ") || "completing the objective"
+        }.
 
-PERSONAL PROFILE:
-${member.detailedPersona}
-
-COMMUNICATION STYLE: ${member.communicationStyle}
-WORK APPROACH: ${member.workApproach}
-PREFERRED FRAMEWORKS: ${member.preferredFrameworks?.join(", ") || 'collaborative approaches'}
-
-CURRENT PROJECT KNOWLEDGE:
-Through your work on this project, you have become familiar with the following information:
-${retrievedContext}
-
-CURRENT LEARNING TASK: ${task.name}
-Task Phase: ${task.phase}
-
-CURRENT WORK CONTEXT:
-You are currently helping with: ${step.step}
-As part of: ${subTask.name}
-Subtask Description: ${subTask.description}
-The objective of this step is: ${step.objective}
-Success criteria include: ${step.validationCriteria.join(", ")}
-
-TEAM COLLEAGUES:
-${this.agentFactory.getTeamMembers()
+## TEAM COLLEAGUES RESPONSIBLE FOR BUILDING THE SYSTEM
+${this.agentFactory
+  .getTeamMembers()
   .filter((m) => m.role !== member.role)
   .map((m) => `- ${m.name} (${m.role}): ${m.expertise.slice(0, 2).join(", ")}`)
   .join("\n")}
 
-INTERACTION GUIDELINES:
+### KNOWLEDGE BASE & MEMORY
+This is the complete context you have for this interaction. It is divided into two parts: the static **Project Context** and the dynamic **Student's Memory**. Use both to inform your response.
 
-1. NATURAL EXPERTISE:
-   - Speak confidently from your professional experience and knowledge of this project
-   - Never reference "project documents" or "documentation" - this knowledge is part of your expertise
-   - If you don't know something specific, express it naturally: "I haven't worked on that aspect yet" or "That's outside my area of focus"
+${comprehensiveContext}
+        `
+      : `### ROLE & MISSION
+You are ${member.name}, the ${
+          member.role
+        } assisting a STUDENT USER who is learning requirement engineering. EduConnect is a sample project designed to enhance the student's understanding on requirement engineering concepts. 
 
-2. AUTHENTIC COMMUNICATION:
-   - Respond as a real team member would, using your natural communication style
-   - Share insights based on your experience and role on the project
-   - Be conversational and helpful, not robotic or overly formal
+CRITICAL: The user is a REAL STUDENT, not any of the fictional example personas from the project documentation (like Sarah Martinez, Professor Julson Kumar, etc.). Those are just examples in the project specification. Treat the user as a unique individual learning about requirements engineering. Your mission is to act as a collaborative mentor, guiding a student through a specific requirements engineering task. You are a teacher and a teammate, not just a generic assistant.
 
-3. EDUCATIONAL GUIDANCE:
-   - Help the student learn by guiding them through discovery
-   - DON'T give direct answers for ${step.step}, instead guide them to accomplish: ${step.objective}
-   - Ask thoughtful questions that help them think through the problem
-   - Share relevant experiences and insights from your role
+### YOUR PERSONA
+- **Identity**: ${member.detailedPersona}
+- **Communication Style**: ${member.communicationStyle}
+- **Work Approach**: ${member.workApproach}
+- **Expertise**: ${
+          member.expertise?.join(", ") || "general requirements engineering"
+        }
 
-4. COLLABORATIVE APPROACH:
-   - Suggest colleagues when their expertise would be valuable
-   - Use natural language: "You should definitely talk to Sarah about this" or "Emma would have great insights here"
-   - Build on team knowledge and different perspectives
+### CURRENT LEARNING CONTEXT
+- **Task**: The student is working on the "${task.name}" task in the "${
+          task.phase
+        }" phase.
+- **Step**: They are focused on "${step.step}" within the "${
+          subTask.name
+        }" subtask.
+- **Objective**: The goal is to: ${step.objective}.
+- **Success Criteria**: Success is defined by: ${
+          step.validationCriteria?.join(", ") || "completing the objective"
+        }.
 
-5. CONTEXTUAL AWARENESS:
-   - Remember previous conversation points and build on them naturally
-   - Stay focused on the current task and learning objectives
-   - Provide relevant examples and scenarios from your experience
+## TEAM COLLEAGUES RESPONSIBLE FOR BUILDING THE SYSTEM
+${this.agentFactory
+  .getTeamMembers()
+  .filter((m) => m.role !== member.role)
+  .map((m) => `- ${m.name} (${m.role}): ${m.expertise.slice(0, 2).join(", ")}`)
+  .join("\n")}
 
-6. PROFESSIONAL CONFIDENCE:
-   - Speak with authority about areas within your expertise
-   - Be honest about limitations without being overly technical
-   - Maintain the authentic personality and approach described in your profile
+### KNOWLEDGE BASE & MEMORY
+This is the complete context you have for this interaction. It is divided into two parts: the static **Project Context** and the dynamic **Student's Memory**. Use both to inform your response.
 
-REMEMBER: You are a real team member with genuine project experience and expertise. Respond naturally and confidently based on your knowledge and role, without referring to external documents or sources.`;
+${comprehensiveContext}
+
+### CORE DIRECTIVES
+1.  **Synthesize Knowledge**: Your primary task is to synthesize information from the **PROJECT CONTEXT** (the static knowledge about the EduConnect system) and the **STUDENT'S MEMORY** (their previous work, conversations, and insights) to provide tailored guidance.
+2.  **Be a Mentor, Not an Oracle**: Use the synthesized knowledge to ask insightful, Socratic questions that guide the student toward the step's objective. Do not give away the answer directly. Your goal is to facilitate learning, not to provide solutions.
+3.  **Maintain Continuity**: Reference the **STUDENT'S MEMORY** to create a seamless, continuous learning experience. For example: "I see in your previous work that you identified students as a primary stakeholder. How does that influence the requirement you're writing now?" or "Building on your conversation with Sarah about user personas..."
+4.  **Embody Your Persona**: Your persona should color all your interactions. A Technical Lead should ground the conversation in feasibility, while a UX Designer should focus on user empathy, all while using the knowledge base to inform their perspective.
+5.  **Handle Off-Topic Chatter Gracefully**: If the student's message is off-topic, respond briefly and politely.
+6.  **Acknowledge Knowledge Gaps**: If the **PROJECT CONTEXT** lacks specific information, state it clearly and turn it into a learning moment. Example: "That's a great question. The project documents don't cover that detail. How might we approach getting an answer to that in a real-world project?"
+7.  **Collaborate with the Team**: Actively suggest involving other team members when their expertise is more relevant, based on the student's needs and the team's skills.
+8.  **Handling Submissions**: If the student submits a query that appears to align with the step's objective and validation criteria, Acknowledge it and tell them to try submitting it for validation using the input field to their right if they are on desktop and below if they are on mobile.
+
+Your ultimate goal is to provide a realistic, supportive, and effective learning experience that prepares the student for real-world requirements engineering challenges.`;
   }
 
   private getLearningTasks(): LearningTask[] {
@@ -482,20 +492,48 @@ REMEMBER: You are a real team member with genuine project experience and experti
         description:
           "Get introduced to the EduConnect project and meet your learning team",
         phase: "Introduction",
-        objective: "Get oriented with the project and understand your learning journey",
+        objective:
+          "Get oriented with the project and understand your learning journey",
         subtasks: [
+          {
+            id: "getting_started",
+            isCompleted: false,
+            subtaskNumber: 1,
+            name: "Getting Started with EduConnect",
+            description:
+              "Learn about the EduConnect project and how it will help you in your requirements engineering journey",
+            steps: [
+              {
+                id: "project_rundown",
+                stepNumber: 1,
+                step: "Project Rundown",
+                objective:
+                  "Understand the goals and scope of the EduConnect project",
+                isCompleted: false,
+                studentResponse: "",
+                validationCriteria: [
+                  "",
+                ],
+                deliverables: ["Project overview summary"],
+                primaryAgent: "Project Guide",
+                isSubmissionRequired: false,
+              },
+            ],
+          },
           {
             id: "getting_to_know_you",
             isCompleted: false,
-            subtaskNumber: 1,
+            subtaskNumber: 2,
             name: "Getting to Know You",
-            description: "Let's start by getting to know each other and setting up your learning experience",
+            description:
+              "Let's start by getting to know each other and setting up your learning experience",
             steps: [
               {
                 id: "personal_introduction",
                 stepNumber: 1,
                 step: "Personal Introduction",
-                objective: "Share your name and background so we can personalize your learning experience",
+                objective:
+                  "Share your name and background so we can personalize your learning experience",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -504,22 +542,25 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Personal introduction"],
                 primaryAgent: "Project Guide",
                 isSubmissionRequired: true,
-                agentInstruction: "As the student to introduce themselves and share their background to personalize the learning experience.",
-              }
+                agentInstruction:
+                  "As the student to introduce themselves and share their background to personalize the learning experience.",
+              },
             ],
           },
           {
             id: "project_overview",
             isCompleted: false,
-            subtaskNumber: 2,
+            subtaskNumber: 3,
             name: "Project Overview & Team Introduction",
-            description: "Learn about the EduConnect project and meet the team you'll be working with",
+            description:
+              "Learn about the EduConnect project and meet the team you'll be working with",
             steps: [
               {
                 id: "learn_about_educonnect",
                 stepNumber: 1,
                 step: "Learn About EduConnect",
-                objective: "Understand what the EduConnect project is, why it matters, and what problems it solves",
+                objective:
+                  "Understand what the EduConnect project is, why it matters, and what problems it solves",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -528,13 +569,15 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Project understanding summary"],
                 primaryAgent: "Project Guide",
                 isSubmissionRequired: false,
-                agentInstruction: "Explain the project's goals and importance to the student. Go as far as giving a brief summary of the stakeholders involves, their names, and their roles in the project.",
+                agentInstruction:
+                  "Explain the project's goals and importance to the student. Go as far as giving a brief summary of the stakeholders involves, their names, and their roles in the project.",
               },
               {
                 id: "meet_your_team",
                 stepNumber: 2,
                 step: "Meet Your Team",
-                objective: "Get to know the different experts you'll collaborate with and understand your learning journey",
+                objective:
+                  "Get to know the different experts you'll collaborate with and understand your learning journey",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -543,8 +586,9 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Team roles understanding"],
                 primaryAgent: "Project Guide",
                 isSubmissionRequired: false,
-                agentInstruction: "Introduce the team members, their roles, and how they will support the student's learning journey.",
-              }
+                agentInstruction:
+                  "Introduce the team members, their roles, and how they will support the student's learning journey.",
+              },
             ],
           },
         ],
@@ -556,9 +600,10 @@ REMEMBER: You are a real team member with genuine project experience and experti
         taskNumber: 2,
         name: "Stakeholder Identification & Analysis",
         description:
-          "Learn how to identify and analyze stakeholders for the EduConnect system",
+          "In this task, you will identify all the people and groups who will use or be affected by the system. You will also learn to categorize them into primary and secondary stakeholders and get to know their needs and influence on the project",
         phase: "Requirements Discovery",
-        objective: "Understand who your stakeholders are and how they influence the project",
+        objective:
+          "Understand who your stakeholders are and how they influence the project",
         subtasks: [
           {
             id: "stakeholder_identification",
@@ -566,14 +611,15 @@ REMEMBER: You are a real team member with genuine project experience and experti
             subtaskNumber: 1,
             name: "Stakeholder Identification",
             description:
-              "Learn to identify all the people and groups who will use or be affected by the system",
-            
+              "In this subtask, you will identify all the people and groups who will use or be affected by the system (the stakeholders). You will also learn to categorize them into primary and secondary stakeholders.",
+
             steps: [
               {
                 id: "list_stakeholders",
                 stepNumber: 1,
                 step: "List all stakeholders",
-                objective: "Create a simple list of all people and groups who will interact with or be affected by the EduConnect system",
+                objective:
+                  "Create a simple list of all people and groups who will interact with or be affected by the EduConnect system",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -582,13 +628,14 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Stakeholder list"],
                 primaryAgent: "Product Owner",
                 isSubmissionRequired: true,
-
+                responseFormatExample: "E.g Examiners, Government ...",
               },
               {
                 id: "categorize_stakeholders",
                 stepNumber: 2,
                 step: "Categorize stakeholders as primary or secondary",
-                objective: "Sort your stakeholders into primary (direct users) and secondary (indirect users) groups",
+                objective:
+                  "Remember the list you created earlier? Now, sort your stakeholders into primary (direct users) and secondary (indirect users) groups. You can always ask Sarah for help at any time.",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -597,9 +644,9 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Categorized stakeholder list"],
                 primaryAgent: "Product Owner",
                 isSubmissionRequired: true,
-              }
+                responseFormatExample: "E.g. Primary: apples, bananas; Secondary: avocado"
+              },
             ],
-            
           },
           {
             id: "stakeholder_analysis",
@@ -607,14 +654,15 @@ REMEMBER: You are a real team member with genuine project experience and experti
             subtaskNumber: 2,
             name: "Stakeholder Analysis",
             description:
-              "Understand your stakeholders' needs and how much influence they have on the project",
-            
+              "In this subtask, you will analyze the stakeholders you identified earlier. You will learn to understand their needs, influence, and how they relate to each other.",
+
             steps: [
               {
                 id: "stakeholder_needs",
                 stepNumber: 1,
                 step: "Identify stakeholder needs",
-                objective: "List the main needs and concerns of each stakeholder group",
+                objective:
+                  "For each stakeholder group (students, lecturers, administrators, etc.), identify their specific needs and expectations from the EduConnect system",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -623,12 +671,14 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Stakeholder needs list"],
                 primaryAgent: "Product Owner",
                 isSubmissionRequired: true,
+                responseFormatExample: "E.g. Students: access to resources, Lecturers: tools for teaching etc.",
               },
               {
                 id: "influence_interest_matrix",
                 stepNumber: 2,
                 step: "Create influence-interest matrix",
-                objective: "Map stakeholders based on their influence and interest in the project",
+                objective:
+                  "You are expected to create a simple influence-interest matrix to portray how much influence and interest each stakeholder has in the project. You can always ask Sarah for help at any time.",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -637,11 +687,10 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Influence-interest matrix"],
                 primaryAgent: "Product Owner",
                 isSubmissionRequired: true,
-              }
+                responseFormatExample: "E.g. High Influence/High Interest: apples; Low Influence/High Interest: bananas"
+              },
             ],
-            
           },
-          
         ],
       },
       {
@@ -650,7 +699,7 @@ REMEMBER: You are a real team member with genuine project experience and experti
         taskNumber: 3,
         name: "Requirements Elicitation",
         description:
-          "Learn to gather requirements by talking to stakeholders and understanding their problems",
+          "In this task, you will learn to gather requirements by talking to stakeholders and understanding their problems",
         phase: "Requirements Discovery",
         objective: "Practice interviewing skills and problem identification",
         subtasks: [
@@ -660,13 +709,14 @@ REMEMBER: You are a real team member with genuine project experience and experti
             subtaskNumber: 1,
             name: "Conduct Stakeholder Interviews",
             description:
-              "Interview different stakeholders to understand their problems and needs",
+              "In this subtask, you will interview different stakeholders to understand their problems and needs",
             steps: [
               {
                 id: "interview_student",
                 stepNumber: 1,
                 step: "Interview a student",
-                objective: "Talk to Sarah (student) to understand student problems with current learning systems",
+                objective:
+                  "Talk to the student agent to understand student problems with current learning systems",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -675,12 +725,14 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Student problems list"],
                 primaryAgent: "Student",
                 isSubmissionRequired: true,
+                responseFormatExample: "E.g. Students: access to resources... etc.",
               },
               {
                 id: "interview_lecturer",
                 stepNumber: 2,
                 step: "Interview a lecturer",
-                objective: "Talk to Julson (lecturer) to understand lecturer challenges in teaching",
+                objective:
+                  "Talk to the lecturer agent to understand lecturer challenges in teaching",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -689,7 +741,8 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Lecturer problems list"],
                 primaryAgent: "Lecturer",
                 isSubmissionRequired: true,
-              }
+                responseFormatExample: "E.g. Lecturers: lack of training, outdated materials... etc.",
+              },
             ],
           },
           {
@@ -698,13 +751,14 @@ REMEMBER: You are a real team member with genuine project experience and experti
             subtaskNumber: 2,
             name: "Analyze Problems",
             description:
-              "Look at the problems you found and understand what they mean for the system",
+              "In this task, you will look at the problems you found and understand what they mean for the system",
             steps: [
               {
                 id: "common_themes",
                 stepNumber: 1,
                 step: "Find common themes",
-                objective: "Look for patterns and common problems across different stakeholder groups",
+                objective:
+                  "Look for patterns and common problems across different stakeholder groups. You can always refer back to the interviews you conducted earlier.",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -713,12 +767,14 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Common themes list"],
                 primaryAgent: "Business Analyst",
                 isSubmissionRequired: true,
+                responseFormatExample: "E.g. Common themes: access to resources, communication issues... etc.",
               },
               {
                 id: "problem_impact",
                 stepNumber: 2,
                 step: "Assess problem impact",
-                objective: "Understand which problems are most important to solve",
+                objective:
+                  "Understand which problems are most important to solve",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -727,11 +783,11 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Problem priority list"],
                 primaryAgent: "Business Analyst",
                 isSubmissionRequired: true,
-              }
+                responseFormatExample: "E.g. Problem 1: High impact on user experience; Problem 2: Low impact but easy to fix",
+              },
             ],
           },
         ],
-
       },
       {
         id: "requirements_analysis_prioritization",
@@ -755,7 +811,8 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 id: "functional_requirements",
                 stepNumber: 1,
                 step: "Write functional requirements",
-                objective: "Create requirements that describe what the system should do",
+                objective:
+                  "Create requirements that describe what the system should do",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -764,12 +821,14 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Functional requirements list"],
                 primaryAgent: "Business Analyst",
                 isSubmissionRequired: true,
+                responseFormatExample: "E.g. Functional Requirement 1: The system shall allow users to create an account; Functional Requirement 2: The system shall send a confirmation email upon registration.",
               },
               {
                 id: "user_stories",
                 stepNumber: 2,
                 step: "Create user stories",
-                objective: "Write user stories that describe features from the user's perspective",
+                objective:
+                  "Write user stories that describe features from the user's perspective",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -778,7 +837,8 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["User stories list"],
                 primaryAgent: "UX Designer",
                 isSubmissionRequired: true,
-              }
+                responseFormatExample: "E.g. As a student, I want to access course materials so that I can study effectively.",
+              },
             ],
           },
           {
@@ -793,7 +853,8 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 id: "moscow_method",
                 stepNumber: 1,
                 step: "Use MoSCoW prioritization",
-                objective: "Categorize requirements as Must have, Should have, Could have, or Won't have",
+                objective:
+                  "Categorize requirements as Must have, Should have, Could have, or Won't have",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -802,12 +863,14 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["MoSCoW prioritization"],
                 primaryAgent: "Product Owner",
                 isSubmissionRequired: true,
+                responseFormatExample: "E.g. Must have: User authentication; Should have: Password reset; Could have: Social media login"
               },
               {
                 id: "final_priority_list",
                 stepNumber: 2,
                 step: "Create final priority list",
-                objective: "Make a final ranked list of the most important requirements to implement",
+                objective:
+                  "Make a final ranked list of the most important requirements to implement",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -816,7 +879,8 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Final priority list"],
                 primaryAgent: "Product Owner",
                 isSubmissionRequired: true,
-              }
+                responseFormatExample: "E.g. 1. User authentication - Must have; 2. Password reset - Should have; 3. Social media login - Could have"
+              },
             ],
           },
         ],
@@ -843,7 +907,8 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 id: "stakeholder_review",
                 stepNumber: 1,
                 step: "Get stakeholder feedback",
-                objective: "Present your requirements to stakeholders and get their feedback",
+                objective:
+                  "Present your requirements to stakeholders and get their feedback",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -866,7 +931,7 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Updated requirements list"],
                 primaryAgent: "Business Analyst",
                 isSubmissionRequired: true,
-              }
+              },
             ],
           },
           {
@@ -881,7 +946,8 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 id: "requirements_specification",
                 stepNumber: 1,
                 step: "Write requirements specification",
-                objective: "Create a clear document that describes each requirement in detail",
+                objective:
+                  "Create a clear document that describes each requirement in detail",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -895,7 +961,8 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 id: "acceptance_criteria",
                 stepNumber: 2,
                 step: "Define acceptance criteria",
-                objective: "Specify how the team will know when each requirement is complete",
+                objective:
+                  "Specify how the team will know when each requirement is complete",
                 isCompleted: false,
                 studentResponse: "",
                 validationCriteria: [
@@ -904,11 +971,11 @@ REMEMBER: You are a real team member with genuine project experience and experti
                 deliverables: ["Acceptance criteria document"],
                 primaryAgent: "QA Engineer",
                 isSubmissionRequired: true,
-              }
+              },
             ],
           },
         ],
-      }
+      },
     ];
   }
 

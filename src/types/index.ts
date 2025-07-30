@@ -30,6 +30,7 @@ export interface Steps {
   primaryAgent: string;
   isSubmissionRequired: boolean;
   agentInstruction?: string;
+  responseFormatExample?: string;
 }
 
 export interface LearningTask {

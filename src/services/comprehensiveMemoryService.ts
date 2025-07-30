@@ -1,5 +1,6 @@
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import {transformerEmbeddings} from '../utils/transformerEmbeddings.js';
 import { createClient } from '@supabase/supabase-js';
 import { Document } from '@langchain/core/documents';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
@@ -9,6 +10,7 @@ import { ChatGroq } from "@langchain/groq";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { HuggingFaceInference } from "@langchain/community/llms/hf";
 import dotenv from 'dotenv';
+import TransformerEmbeddings from '../utils/transformerEmbeddings.js';
 
 dotenv.config();
 
@@ -38,7 +40,7 @@ interface ComprehensiveUserData {
 }
 
 export class ComprehensiveMemoryService {
-  private embeddings: OpenAIEmbeddings;
+  private embeddings: OpenAIEmbeddings | TransformerEmbeddings;
   private supabaseClient: any;
   private userDataCache: Map<string, ComprehensiveUserData> = new Map();
   private questionModel: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference;
@@ -46,10 +48,12 @@ export class ComprehensiveMemoryService {
   private readonly maxTokenLimit = 2000; // Using existing token limit
 
   constructor(questionModel: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference) {
-    this.embeddings = new OpenAIEmbeddings({ 
-      apiKey: process.env.OPENAI_API_KEY as string 
-    });
-    
+    // this.embeddings = new OpenAIEmbeddings({ 
+    //   apiKey: process.env.OPENAI_API_KEY as string 
+    // });
+
+    this.embeddings = transformerEmbeddings;
+
     this.supabaseClient = createClient(
       process.env.SUPABASE_URL as string, 
       process.env.SUPABASE_API_KEY as string

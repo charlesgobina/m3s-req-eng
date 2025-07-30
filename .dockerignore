@@ -1,0 +1,23 @@
+# From .gitignore
+node_modules
+.DS_Store
+rally.*
+.claude
+.vscode
+backup*
+.env
+forClaude.ts
+stategraph*
+prompt*
+serviceAccount*
+
+# Docker specific
+Dockerfile
+.git
+.gitignore
+.dockerignore
+
+# Development files
+src/
+tsconfig.json
+*.md
