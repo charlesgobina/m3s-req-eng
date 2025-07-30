@@ -9,6 +9,8 @@ export interface User {
   role: 'student' | 'lecturer';
   courseId?: string; // Optional, if user is associated with a course
   isRegistrationApproved?: boolean; // Only for students
+  // additional field for lecturer to check if they are approved
+  isLecturerApproved?: boolean; // Only for lecturers
 }
 
 export interface SignupData {
@@ -35,7 +37,7 @@ export class AuthService {
         displayName: `${userData.firstName} ${userData.lastName}`,
       });
       // Create user document in Firestore
-      const user: User = {
+      const user: User = { // kinda redundant, will check this out later
         id: userRecord.uid,
         firstName: userData.firstName,
         lastName: userData.lastName,
@@ -58,6 +60,12 @@ export class AuthService {
       if (userData.role === 'student') {
         user.isRegistrationApproved = false;
         firestoreData.isRegistrationApproved = false;
+      }
+
+      // Only add isLecturerApproved for lecturers
+      if (userData.role === 'lecturer') {
+        user.isLecturerApproved = false;
+        firestoreData.isLecturerApproved = false;
       }
 
       await db.collection('users').doc(userRecord.uid).set(firestoreData);
@@ -133,6 +141,15 @@ export class AuthService {
         // Check if student registration is approved
         if (!user.isRegistrationApproved) {
           throw new Error('registration-not-approved');
+        }
+      }
+
+      // Only add isLecturerApproved for lecturers
+      if (userData!.role === 'lecturer') {
+        user.isLecturerApproved = userData!.isLecturerApproved;
+        // Check if lecturer registration is approved
+        if (!user.isLecturerApproved) {
+          throw new Error('lecturer-not-approved');
         }
       }
 

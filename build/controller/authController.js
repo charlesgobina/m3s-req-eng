@@ -102,7 +102,12 @@ export class AuthController {
             }
             if (error.message.includes('registration-not-approved')) {
                 return res.status(403).json({
-                    error: 'Your registration has not been approved yet. Please contact an administrator.'
+                    error: 'Your registration has not been approved yet. Please contact your lecturer.'
+                });
+            }
+            if (error.message.includes('lecturer-not-approved')) {
+                return res.status(403).json({
+                    error: 'Your lecturer registration has not been approved yet. Please contact an administrator.'
                 });
             }
             res.status(500).json({

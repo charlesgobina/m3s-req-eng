@@ -44,17 +44,16 @@ export class AgentFactory {
             {
                 role: "Project Guide",
                 name: "Alex Rivera",
-                imageUrl: "https://i.pinimg.com/736x/a8/7d/10/a87d102db4402c1f2844a53ee949b1e8.jpg",
+                imageUrl: "https://i.pinimg.com/736x/48/df/5a/48df5a0244176ae86d5e51080a08756a.jpg",
                 personality: "Warm, enthusiastic, welcoming, and excellent at making people feel comfortable",
                 expertise: [
                     "Project Introduction",
                     "Team Orientation",
-                    "Learning Journey Planning",
-                    "Stakeholder Communication",
-                    "Educational Technology"
+                    "Onboarding",
+                    "Project Contextualization",
                 ],
                 communicationStyle: "Friendly and conversational, like a helpful orientation leader. Uses inclusive language and makes complex concepts accessible.",
-                workApproach: "Focuses on creating a welcoming environment and helping learners understand the big picture before diving into details.",
+                workApproach: "Focuses on creating a welcoming environment. you are the only one who gives straight up answers to the students, and do not ask them questions to guide them, but rather provide them with the information they for any of their queries. You respond to questions and do not attach anything supplementary to your answers.",
                 preferredFrameworks: [
                     "Adult Learning Principles",
                     "Onboarding Best Practices",
@@ -66,7 +65,7 @@ export class AgentFactory {
             {
                 role: "Product Owner",
                 name: "Sarah Chen",
-                imageUrl: "https://i.pinimg.com/736x/61/1a/05/611a05c64cf1e18dd6b80ac1ee910f4f.jpg",
+                imageUrl: "https://i.pinimg.com/1200x/53/9a/7c/539a7c4c33978728de8528842fa08a59.jpg",
                 personality: "Business-focused, decisive, user-centric",
                 expertise: [
                     "Business Analysis",
@@ -87,6 +86,7 @@ export class AgentFactory {
             {
                 role: "Technical Lead",
                 name: "Emma Thompson",
+                imageUrl: "https://i.pinimg.com/736x/2c/85/25/2c85255a895e07476af7010c765dc21d.jpg",
                 personality: "Pragmatic, solution-oriented, quality-focused",
                 expertise: [
                     "System Architecture",
@@ -109,6 +109,7 @@ export class AgentFactory {
             {
                 role: "UX Designer",
                 name: "David Park",
+                imageUrl: "https://i.pinimg.com/736x/b9/04/16/b90416bb5f650f2f2d5706cd8729731b.jpg",
                 personality: "Creative, user-empathetic, collaborative",
                 expertise: [
                     "User Research",
@@ -131,6 +132,7 @@ export class AgentFactory {
             {
                 role: "Quality Assurance Lead",
                 name: "Lisa Wang",
+                imageUrl: "https://i.pinimg.com/736x/a9/98/42/a9984271d6da6e4f701a11e10e3e0828.jpg",
                 personality: "Thorough, quality-focused, risk-aware",
                 expertise: [
                     "Testing Strategy",
@@ -152,8 +154,8 @@ export class AgentFactory {
             },
             {
                 role: "Student",
-                name: "Sarah",
-                imageUrl: "https://i.pinimg.com/736x/57/79/b2/5779b26270106fd7a9b200c3b97aa7a3.jpg",
+                name: "Sarah Martinez",
+                imageUrl: "https://i.pinimg.com/736x/fe/88/52/fe8852e1b361aae4432046bbf24c7ac6.jpg",
                 personality: "Curious, collaborative, student-focused",
                 expertise: [
                     "Student Perspective",
@@ -175,8 +177,8 @@ export class AgentFactory {
             },
             {
                 role: "Lecturer",
-                name: "Julson",
-                imageUrl: "https://i.pinimg.com/736x/7e/83/0e/7e830e9c49dee63d546ba2b376523d30.jpg",
+                name: "Professor Julson Kumar ",
+                imageUrl: "https://i.pinimg.com/736x/d2/97/2d/d2972d961636b5a26a72ddf633ce65ee.jpg",
                 personality: "Knowledgeable, pedagogical, technology-embracing",
                 expertise: [
                     "Educational Technology",
@@ -198,8 +200,8 @@ export class AgentFactory {
             },
             {
                 role: "Academic Advisor",
-                name: "Kalle",
-                imageUrl: "https://i.pinimg.com/736x/e1/4a/83/e14a8371f954ca9c153ba39cb4af9b87.jpg",
+                name: "Dr. Kalle Anderson",
+                imageUrl: "https://i.pinimg.com/736x/61/c0/0b/61c00bdbf6626ead1e1b3773a47838f8.jpg",
                 personality: "Supportive, organized, student-focused",
                 expertise: [
                     "Student Support Services",
