@@ -1,19 +1,15 @@
 import { Router } from 'express';
 import { ChatController } from '../controller/chatController.js';
-import { AgentService } from '../services/agentService.js';
-import { AuthService } from '../services/authService.js';
+import { agentService, authService } from '../services/index.js';
 import { AuthMiddleware } from '../middleware/authMiddleware.js';
 
 const router = Router();
-const agentService = new AgentService();
-const chatController = new ChatController(agentService);
 
-// Initialize auth middleware
-const authService = new AuthService();
+// Use singleton instances instead of creating new ones
+const chatController = new ChatController(agentService);
 const authMiddleware = new AuthMiddleware(authService);
 
-// Initialize the agent service
-agentService.initialize();
+console.log('🔗 ChatRoutes: Using singleton AgentService and AuthService instances');
 
 // Protected routes - require authentication
 router.post('/stream', authMiddleware.requireAuth, async (req, res, next) => {

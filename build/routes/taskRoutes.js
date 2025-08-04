@@ -1,14 +1,12 @@
 import { Router } from 'express';
 import { TaskController } from '../controller/taskController.js';
-import { AgentService } from '../services/agentService.js';
-import { AuthService } from '../services/authService.js';
+import { agentService, authService } from '../services/index.js';
 import { AuthMiddleware } from '../middleware/authMiddleware.js';
 const router = Router();
-const agentService = new AgentService();
+// Use singleton instances instead of creating new ones
 const taskController = new TaskController(agentService);
-// Initialize auth middleware
-const authService = new AuthService();
 const authMiddleware = new AuthMiddleware(authService);
+console.log('🔗 TaskRoutes: Using singleton AgentService and AuthService instances');
 // Protected routes - PRESERVE ORIGINAL FUNCTIONALITY
 router.get('/', authMiddleware.requireAuth, (req, res) => taskController.getTasks(req, res));
 router.get('/team-members', authMiddleware.requireAuth, (req, res) => taskController.getTeamMembers(req, res));

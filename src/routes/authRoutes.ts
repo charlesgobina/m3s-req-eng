@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { AuthController } from '../controller/authController.js';
-import { AuthService } from '../services/authService.js';
+import { authService } from '../services/index.js';
 import { AuthMiddleware } from '../middleware/authMiddleware.js';
 
 const router = Router();
 
-// Initialize services and controllers
-const authService = new AuthService();
+// Use singleton AuthService instance
 const authController = new AuthController(authService);
 const authMiddleware = new AuthMiddleware(authService);
+
+console.log('🔗 AuthRoutes: Using singleton AuthService instance');
 
 // Public routes (no authentication required)
 router.post('/signup', async (req, res, next) => {
