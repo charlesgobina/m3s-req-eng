@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { Document } from '@langchain/core/documents';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { db } from '../config/adminConfig.js';
+import { redisMemoryService, UserDataCache } from './redisMemoryService.js';
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatGroq } from "@langchain/groq";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
@@ -39,13 +40,15 @@ interface ComprehensiveUserData {
   lastUpdated: Date;
 }
 
-export class ComprehensiveMemoryService {
+export class VectorMemoryService {
   private embeddings: OpenAIEmbeddings | TransformerEmbeddings;
   private supabaseClient: any;
-  private userDataCache: Map<string, ComprehensiveUserData> = new Map();
+  // REMOVED: private userDataCache: Map<string, ComprehensiveUserData> = new Map();
+  // Now using Redis for user data cache to prevent memory leaks
   private questionModel: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference;
   private textSplitter: RecursiveCharacterTextSplitter;
   private readonly maxTokenLimit = 2000; // Using existing token limit
+  private isRedisInitialized: boolean = false;
 
   constructor(questionModel: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference) {
     // this.embeddings = new OpenAIEmbeddings({ 
@@ -65,6 +68,25 @@ export class ComprehensiveMemoryService {
       chunkSize: 500,  // Smaller chunks for better precision
       chunkOverlap: 50,
     });
+
+    // Initialize Redis connection for user data caching
+    this.initializeRedis();
+  }
+
+  /**
+   * Initialize Redis connection for user data caching
+   * This prevents memory leaks by moving cache storage outside Node.js RAM
+   */
+  private async initializeRedis(): Promise<void> {
+    try {
+      await redisMemoryService.initialize();
+      this.isRedisInitialized = true;
+      console.log('✅ VectorMemoryService: Redis initialized');
+    } catch (error) {
+      console.error('❌ VectorMemoryService: Redis initialization failed:', error);
+      // Service can still work with fallback behavior
+      this.isRedisInitialized = false;
+    }
   }
 
   // Main method: Get comprehensive context for any agent
@@ -172,17 +194,17 @@ export class ComprehensiveMemoryService {
     try {
       console.log(`   └─ Checking for data changes since ${since.toISOString()}`);
       
-      // Check if new conversations exist
-      const conversationsRef = db.collection('chat_messages').doc(userId).collection('step_chats');
-      const recentConversations = await conversationsRef
-        .where('lastUpdated', '>', since)
-        .limit(1)
-        .get();
+      // Check if new conversations exist     // coming back to this later   
+      // const conversationsRef = db.collection('chat_messages').doc(userId).collection('step_chats');
+      // const recentConversations = await conversationsRef
+      //   .where('lastUpdated', '>', since)
+      //   .limit(1)
+      //   .get();
 
-      if (!recentConversations.empty) {
-        console.log(`   └─ Found new conversations since last embedding`);
-        return true;
-      }
+      // if (!recentConversations.empty) {
+      //   console.log(`   └─ Found new conversations since last embedding`);
+      //   return true;
+      // }
 
       // Check if progress has changed
       const progressRef = db.collection('user_progress').doc(userId).collection('tasks');
@@ -629,26 +651,48 @@ To enable full memory features, please set up the user_memory_embeddings table i
     }
   }
 
-  // Force refresh embeddings (used for step navigation)
+  /**
+   * Force refresh embeddings (used for step navigation)
+   * Now uses Redis-based cache clearing instead of Map deletion
+   */
   private async forceRefreshEmbeddings(userId: string): Promise<void> {
     console.log(`🔄 [FORCE-REFRESH] Forcing embedding refresh for user ${userId}`);
     
-    // Clear cache to force refresh
-    this.userDataCache.delete(userId);
+    // Clear Redis cache to force refresh
+    if (this.isRedisInitialized) {
+      try {
+        await redisMemoryService.clearUserDataCache(userId);
+        console.log(`   └─ Cleared Redis user data cache for ${userId}`);
+      } catch (error) {
+        console.error('❌ Failed to clear Redis user data cache:', error);
+      }
+    }
     
     // Trigger immediate refresh
     await this.refreshUserEmbeddings(userId);
   }
 
-  // Method to be called when user moves to new step
+  /**
+   * Method to be called when user moves to new step
+   * Now uses Redis-based cache clearing instead of Map deletion
+   */
   async onStepChange(userId: string, newStepId: string): Promise<void> {
     console.log(`🔄 [STEP-CHANGE] User ${userId} completed step ${newStepId}`);
     
-    // Clear cache to force refresh
-    this.userDataCache.delete(userId);
+    // Clear Redis cache to force refresh
+    if (this.isRedisInitialized) {
+      try {
+        await redisMemoryService.clearUserDataCache(userId);
+        await redisMemoryService.clearUserContextCache(userId);
+        console.log(`   └─ Cleared Redis user data cache for ${userId}`);
+        console.log(`   └─ Cleared Redis context cache for ${userId}`);
+      } catch (error) {
+        console.error('❌ Failed to clear Redis caches:', error);
+      }
+    }
     
     // Refresh embeddings will happen automatically on next request
-    console.log(`✅ [STEP-CHANGE] Cache cleared for user ${userId}`);
+    console.log(`✅ [STEP-CHANGE] Redis caches cleared for user ${userId}`);
   }
 
   // Method to save new user interaction

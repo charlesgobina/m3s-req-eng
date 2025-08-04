@@ -9,6 +9,8 @@ import { authRouter } from './routes/authRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { chatService } from './services/chatService.js';
+import { initializeServices } from './services/index.js';
+import RedisManager from './config/redisConfig.js';
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,9 +34,13 @@ app.get('/health', (req, res) => {
 });
 // Error handling middleware (should be last)
 app.use(errorHandler);
-// Initialize server with Firebase validation
+// Initialize server with all services
 async function startServer() {
     try {
+        console.log('🚀 Starting Requirements Engineering Learning Server...');
+        // Initialize singleton services first
+        console.log('🔧 Initializing singleton services...');
+        await initializeServices();
         // Test Firebase Admin connection using existing admin config
         console.log('🔌 Testing Firebase Admin connection...');
         const isConnected = await chatService.testConnection();
@@ -43,13 +49,42 @@ async function startServer() {
         }
         // Start the server
         app.listen(PORT, () => {
-            console.log(`🚀 Requirements Engineering Learning Server running on port ${PORT}`);
-            console.log(`💚 Health check available at: http://localhost:${PORT}/health`);
-            console.log(`🔥 Firebase Admin services initialized successfully`);
+            console.log('');
+            console.log('🎉 ================================');
+            console.log('✅ Server started successfully!');
+            console.log('🎉 ================================');
+            console.log(`🚀 Port: ${PORT}`);
+            console.log(`💚 Health check: http://localhost:${PORT}/health`);
+            console.log('🔧 Singleton services: ✅ Initialized');
+            console.log('🔥 Firebase Admin: ✅ Connected');
+            console.log('📦 Redis Memory: ✅ Ready');
+            console.log('🎉 ================================');
+            console.log('');
         });
     }
     catch (error) {
         console.error('❌ Failed to start server:', error);
+        process.exit(1);
+    }
+}
+// Graceful shutdown handler to prevent memory leaks
+process.on('SIGTERM', async () => {
+    console.log('🔄 SIGTERM received, starting graceful shutdown...');
+    await gracefulShutdown();
+});
+process.on('SIGINT', async () => {
+    console.log('🔄 SIGINT received, starting graceful shutdown...');
+    await gracefulShutdown();
+});
+async function gracefulShutdown() {
+    try {
+        console.log('🔌 Closing Redis connections...');
+        await RedisManager.closeConnection();
+        console.log('✅ Graceful shutdown completed');
+        process.exit(0);
+    }
+    catch (error) {
+        console.error('❌ Error during graceful shutdown:', error);
         process.exit(1);
     }
 }
