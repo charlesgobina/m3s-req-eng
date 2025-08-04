@@ -33,6 +33,7 @@
     "express": "^5.1.0",
     "firebase": "^11.9.1",
     "firebase-admin": "^12.7.0",
+    "ioredis": "^5.3.2",
     "nodemon": "^3.1.10",
     "pg": "^8.16.0"
   },
