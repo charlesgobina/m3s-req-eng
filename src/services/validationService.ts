@@ -1,13 +1,13 @@
 import { SystemMessage, HumanMessage } from "@langchain/core/messages";
 import { LearningTask, Subtask, Steps } from "../types/index.js";
-import { EnhancedMemoryService } from "./enhancedMemoryService.js";
+import { MemoryService } from "./memoryService.js";
 import { AgentFactory } from "./agentFactory.js";
 
 export class ValidationService {
-  private memoryService: EnhancedMemoryService;
+  private memoryService: MemoryService;
   private agentFactory: AgentFactory;
 
-  constructor(memoryService: EnhancedMemoryService, agentFactory: AgentFactory) {
+  constructor(memoryService: MemoryService, agentFactory: AgentFactory) {
     this.memoryService = memoryService;
     this.agentFactory = agentFactory;
   }
@@ -36,8 +36,8 @@ export class ValidationService {
     const systemPrompt = this.buildValidationPrompt(task, subTask, step, retrievedContext);
     const threadId = `${sessionId}_validation_${taskId}`;
 
-    // Get progress-aware memory for validation thread
-    const validationMemory = this.memoryService.getSmartProgressMemory(
+    // Get progress-aware memory for validation thread (now async due to Redis)
+    const validationMemory = await this.memoryService.getStepMemory(
       userId,
       taskId,
       subTask.id,

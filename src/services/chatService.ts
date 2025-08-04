@@ -10,11 +10,11 @@ import {
   TeamMember,
   Subtask,
 } from "../types/index.js";
-import { AgentService } from "./agentService.js";
+import { agentService } from "./index.js";
 import { ChatGroq } from "@langchain/groq";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { EnhancedMemoryService } from "./enhancedMemoryService.js";
+import { MemoryService } from "./memoryService.js";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import retriever from "../utils/retriever.js";
 import { combineDocuments } from "../utils/combineDocuments.js";
@@ -39,12 +39,11 @@ dotenv.config();
  * └── lastUpdated: Timestamp
  */
 export class ChatService {
-  private agentService: AgentService;
   private model: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI;
 
   constructor() {
-    // Initialize AgentService for accessing team members
-    this.agentService = new AgentService();
+    // Use singleton AgentService instance instead of creating new one
+    console.log('🔗 ChatService: Using singleton AgentService instance');
     this.model = new ChatGroq({
       // model: "gemma2-9b-it",
       model: "llama-3.3-70b-versatile",
@@ -204,8 +203,8 @@ export class ChatService {
       timestamp: new Date(),
       isWelcomeMessage: true,
     };
-    // get learning task details
-    const taskDetails: LearningTask | undefined = this.agentService
+    // get learning task details using singleton AgentService
+    const taskDetails: LearningTask | undefined = agentService
       .getLearningTasksList()
       .find((task) => task.id === taskId);
 
@@ -222,7 +221,7 @@ export class ChatService {
     welcomeMessage.id = `welcome_${Date.now()}`; // Generate a unique ID based on timestamp
     welcomeMessage.role = "assistant"; // Set role to assistant
     welcomeMessage.timestamp = new Date(); // Set current timestamp
-    welcomeMessage.agentRole = "Project Guide"; // Use agent role from step details if available
+    welcomeMessage.agentRole = "Team Lead"; // Use agent role from step details if available
 
     if (stepDetails && taskDetails && subtaskDetails) {
       welcomeMessage.content = await this.createWelcomeLLMPipeline(
@@ -261,8 +260,8 @@ export class ChatService {
     model: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI
   ): Promise<string> {
     const agentFactory = new AgentFactory(model);
-    const memoryService = new EnhancedMemoryService(model);
-    const comprehensiveContext = await memoryService.getComprehensiveContext(
+    const memoryService = new MemoryService(model);
+    const comprehensiveContext = await memoryService.getUniversalContext(
       userId,
       agentRole,
       message,
@@ -272,15 +271,15 @@ export class ChatService {
     );
     const welcomeAgentDetails: TeamMember | undefined = agentFactory
       .getTeamMembers()
-      .find((member) => member.role === "Project Guide");
+      .find((member) => member.role === "Team Lead");
     if (!welcomeAgentDetails) {
-      throw new Error("Project Guide team member not found");
+      throw new Error("Team Lead team member not found");
     }
 
-    const allTeamMembers = this.agentService.getTeamMembersList();
+    const allTeamMembers = agentService.getTeamMembersList();
 
     try {
-      const promptSys = `You are a Project Guide - a warm, helpful assistant that introduces students to new learning steps. You respond to questions and do not attach anything supplementary to your answers
+      const promptSys = `You are a Team Lead - a warm, helpful assistant that introduces students to new learning steps. You respond to questions and do not attach anything supplementary to your answers
 
         Your role:
         - Welcome the student to the current step
@@ -302,7 +301,7 @@ export class ChatService {
         Instructions:
         1. Start with a brief, friendly welcome
         2. Explain the current step's objective clearly
-        3. Introduce the team member they'll work with (if it's you as Alex the Project Guide, mention that directly).
+        3. Introduce the team member they'll work with (if it's you as Alex the Team Lead, mention that directly).
         4. Encourage questions and engagement
         5. Keep it concise but informative
 

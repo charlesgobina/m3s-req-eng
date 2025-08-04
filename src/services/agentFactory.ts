@@ -57,7 +57,7 @@ export class AgentFactory {
   getTeamMembers(): TeamMember[] {
     return [
       {
-        role: "Project Guide",
+        role: "Team Lead",
         name: "Alex Rivera",
         imageUrl: "https://i.pinimg.com/736x/48/df/5a/48df5a0244176ae86d5e51080a08756a.jpg",
         personality: "Warm, enthusiastic, welcoming, and excellent at making people feel comfortable",

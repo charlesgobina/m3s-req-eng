@@ -28,6 +28,35 @@ export interface LoginData {
 }
 
 export class AuthService {
+  // Singleton instance
+  private static instance: AuthService | null = null;
+
+  private constructor() {
+    console.log("🔧 AuthService: Singleton instance created");
+  }
+
+  /**
+   * Get singleton instance of AuthService
+   * This prevents multiple instances and reduces memory usage
+   */
+  public static getInstance(): AuthService {
+    if (!AuthService.instance) {
+      console.log("🏗️ Creating new AuthService singleton instance...");
+      AuthService.instance = new AuthService();
+    } else {
+      console.log("♻️ Reusing existing AuthService singleton instance");
+    }
+    
+    return AuthService.instance;
+  }
+
+  /**
+   * Reset singleton instance (useful for testing)
+   */
+  public static resetInstance(): void {
+    AuthService.instance = null;
+    console.log("🗑️ AuthService singleton instance reset");
+  }
   async signup(userData: SignupData): Promise<{ user: User; customToken: string }> {
     try {
       // Create user in Firebase Auth

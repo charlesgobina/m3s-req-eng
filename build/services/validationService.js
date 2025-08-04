@@ -14,8 +14,8 @@ export class ValidationService {
         const retrievedContext = await retrieveRelevantContext(submission);
         const systemPrompt = this.buildValidationPrompt(task, subTask, step, retrievedContext);
         const threadId = `${sessionId}_validation_${taskId}`;
-        // Get progress-aware memory for validation thread
-        const validationMemory = this.memoryService.getSmartProgressMemory(userId, taskId, subTask.id, step.id);
+        // Get progress-aware memory for validation thread (now async due to Redis)
+        const validationMemory = await this.memoryService.getStepMemory(userId, taskId, subTask.id, step.id);
         const memoryMessages = await validationMemory.chatHistory.getMessages();
         const managedMessages = [
             new SystemMessage(systemPrompt),

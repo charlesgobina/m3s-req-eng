@@ -2,12 +2,15 @@ import { ChatGroq } from "@langchain/groq";
 import { HumanMessage, SystemMessage } from "@langchain/core/messages";
 import retriever from "../utils/retriever.js";
 import { combineDocuments } from "../utils/combineDocuments.js";
-import { EnhancedMemoryService } from "./enhancedMemoryService.js";
+import { MemoryService } from "./memoryService.js";
 import { AgentFactory } from "./agentFactory.js";
 import { ValidationService } from "./validationService.js";
+import { authService } from "./index.js";
 import dotenv from "dotenv";
 dotenv.config();
 export class AgentService {
+    // Singleton instance
+    static instance = null;
     model;
     questionModel;
     learningTasks;
@@ -29,13 +32,38 @@ export class AgentService {
             streaming: false,
         });
         // Initialize services
-        this.memoryService = new EnhancedMemoryService(this.questionModel);
+        this.memoryService = new MemoryService(this.questionModel);
         this.agentFactory = new AgentFactory(this.model);
         this.validationService = new ValidationService(this.memoryService, this.agentFactory);
         this.learningTasks = this.getLearningTasks();
+        console.log("🔧 AgentService: Singleton instance created");
     }
+    /**
+     * Get singleton instance of AgentService
+     * This prevents multiple instances and reduces memory usage
+     */
+    static getInstance() {
+        if (!AgentService.instance) {
+            console.log("🏗️ Creating new AgentService singleton instance...");
+            AgentService.instance = new AgentService();
+        }
+        else {
+            console.log("♻️ Reusing existing AgentService singleton instance");
+        }
+        return AgentService.instance;
+    }
+    /**
+     * Initialize the service (called once after getInstance)
+     */
     async initialize() {
-        console.log("AgentService initialized");
+        console.log("✅ AgentService initialized");
+    }
+    /**
+     * Reset singleton instance (useful for testing)
+     */
+    static resetInstance() {
+        AgentService.instance = null;
+        console.log("🗑️ AgentService singleton instance reset");
     }
     // Retrieve relevant context using user question
     async retrieveRelevantContext(userQuestion) {
@@ -106,8 +134,8 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
         if (!task || !subtask || !member) {
             throw new Error("Invalid task or team member");
         }
-        // Get smart progress memory
-        const memory = this.memoryService.getSmartProgressMemory(userId, taskId, subtask.id, step.id);
+        // Get smart progress memory (now async due to Redis)
+        const memory = await this.memoryService.getStepMemory(userId, taskId, subtask.id, step.id);
         // Handle different context based on role type
         const intervieweeRoles = ["Student", "Lecturer", "Academic Advisor"];
         const isInterviewee = intervieweeRoles.includes(member.role);
@@ -119,8 +147,11 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
         }
         else {
             // Team members get comprehensive context
-            const comprehensiveContext = await this.memoryService.getComprehensiveContext(userId, agentRole, message, taskId, subtask.id, step.id);
-            systemPrompt = this.buildEnhancedTeamAssistantPrompt(member, task, subtask, step, comprehensiveContext);
+            const comprehensiveContext = await this.memoryService.getUniversalContext(userId, agentRole, message, taskId, subtask.id, step.id);
+            // Get user's name to personalize the interaction
+            const user = await authService.getUserById(userId);
+            const userName = user ? `${user.firstName} ${user.lastName}` : "Student";
+            systemPrompt = this.buildEnhancedTeamAssistantPrompt(member, task, subtask, step, comprehensiveContext, userName);
         }
         const agent = this.agentFactory.getTeamAgent(agentRole);
         if (!agent) {
@@ -150,8 +181,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
         const agentResponse = response.messages[response.messages.length - 1].content;
         // Save conversation to memory
         await memory.saveContext({ input: message }, { output: agentResponse });
-        // Save agent insights for future reference
-        await memory.saveAgentInsights(agentRole, message, agentResponse);
+        // Agent insights are now handled by vector memory service
         // Save interaction to comprehensive memory
         // await this.memoryService.saveInteraction(
         //   userId,
@@ -176,8 +206,7 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
     async onStepCompletion(userId, stepData) {
         try {
             console.log(`🎯 [STEP-COMPLETION] Processing completion for user ${userId}`);
-            // Refresh all conversation memories for this user to invalidate cache
-            await this.memoryService.refreshUserMemories(userId);
+            // Memory cleanup handled automatically by MemoryService
             // Notify comprehensive memory system about step change
             if (stepData.taskId && stepData.subtaskId && stepData.stepId) {
                 await this.memoryService.onStepChange(userId, stepData.taskId, stepData.subtaskId, stepData.stepId);
@@ -236,13 +265,13 @@ Respond with ONLY the role name (e.g., "Product Owner", "Business Analyst", etc.
         `;
     }
     // Enhanced team assistant prompt with comprehensive memory context
-    buildEnhancedTeamAssistantPrompt(member, task, subTask, step, comprehensiveContext) {
-        return member.role === "Project Guide"
+    buildEnhancedTeamAssistantPrompt(member, task, subTask, step, comprehensiveContext, userName) {
+        return member.role === "Team Lead"
             ? `
 ### ROLE & MISSION
-You are ${member.name}, the ${member.role} assisting a STUDENT USER who is learning requirement engineering. EduConnect is a sample project designed to enhance the student's understanding on requirement engineering concepts. 
+You are ${member.name}, the ${member.role} assisting ${userName}, a student who is learning requirement engineering. EduConnect is a sample project designed to enhance the student's understanding on requirement engineering concepts. 
 
-CRITICAL: The user is a REAL STUDENT, not any of the fictional example personas from the project documentation (like Sarah Martinez, Professor Julson Kumar, etc.). Those are just examples in the project specification. Treat the user as a unique individual learning about requirements engineering. Your mission is to act as a collaborative mentor, guiding the student through a specific requirements engineering task. You are a teacher and a teammate, not just a generic assistant.
+CRITICAL: You are speaking with ${userName}, a real student, not any of the fictional example personas from the project documentation (like Sarah Martinez, Professor Julson Kumar, etc.). Those are just examples in the project specification. Treat ${userName} as a unique individual learning about requirements engineering. Your mission is to act as a collaborative mentor, guiding the student through a specific requirements engineering task. You are a teacher and a teammate, not just a generic assistant.
 
 ### YOUR PERSONA
 - **Identity**: ${member.detailedPersona}
@@ -251,7 +280,7 @@ CRITICAL: The user is a REAL STUDENT, not any of the fictional example personas 
 - **Expertise**: ${member.expertise?.join(", ") || "general requirements engineering"}
 
 ### CURRENT LEARNING CONTEXT
-- **Task**: The student is working on the "${task.name}" task in the "${task.phase}" phase.
+- **Task**: ${userName} is working on the "${task.name}" task in the "${task.phase}" phase.
 - **Step**: They are focused on "${step.step}" within the "${subTask.name}" subtask.
 - **Objective**: The goal is to: ${step.objective}.
 - **Success Criteria**: Success is defined by: ${step.validationCriteria?.join(", ") || "completing the objective"}.
@@ -269,9 +298,9 @@ This is the complete context you have for this interaction. It is divided into t
 ${comprehensiveContext}
         `
             : `### ROLE & MISSION
-You are ${member.name}, the ${member.role} assisting a STUDENT USER who is learning requirement engineering. EduConnect is a sample project designed to enhance the student's understanding on requirement engineering concepts. 
+You are ${member.name}, the ${member.role} assisting ${userName}, a student who is learning requirement engineering. EduConnect is a sample project designed to enhance the student's understanding on requirement engineering concepts. 
 
-CRITICAL: The user is a REAL STUDENT, not any of the fictional example personas from the project documentation (like Sarah Martinez, Professor Julson Kumar, etc.). Those are just examples in the project specification. Treat the user as a unique individual learning about requirements engineering. Your mission is to act as a collaborative mentor, guiding a student through a specific requirements engineering task. You are a teacher and a teammate, not just a generic assistant.
+CRITICAL: You are speaking with ${userName}, a real student, not any of the fictional example personas from the project documentation (like Sarah Martinez, Professor Julson Kumar, etc.). Those are just examples in the project specification. Treat ${userName} as a unique individual learning about requirements engineering. Your mission is to act as a collaborative mentor, guiding a student through a specific requirements engineering task. You are a teacher and a teammate, not just a generic assistant.
 
 ### YOUR PERSONA
 - **Identity**: ${member.detailedPersona}
@@ -280,7 +309,7 @@ CRITICAL: The user is a REAL STUDENT, not any of the fictional example personas 
 - **Expertise**: ${member.expertise?.join(", ") || "general requirements engineering"}
 
 ### CURRENT LEARNING CONTEXT
-- **Task**: The student is working on the "${task.name}" task in the "${task.phase}" phase.
+- **Task**: ${userName} is working on the "${task.name}" task in the "${task.phase}" phase.
 - **Step**: They are focused on "${step.step}" within the "${subTask.name}" subtask.
 - **Objective**: The goal is to: ${step.objective}.
 - **Success Criteria**: Success is defined by: ${step.validationCriteria?.join(", ") || "completing the objective"}.
@@ -338,7 +367,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                     "",
                                 ],
                                 deliverables: ["Project overview summary"],
-                                primaryAgent: "Project Guide",
+                                primaryAgent: "Team Lead",
                                 isSubmissionRequired: false,
                             },
                         ],
@@ -358,10 +387,10 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
-                                    "Provides name and brief background information",
+                                    "Just the student's name",
                                 ],
                                 deliverables: ["Personal introduction"],
-                                primaryAgent: "Project Guide",
+                                primaryAgent: "Team Lead",
                                 isSubmissionRequired: true,
                                 agentInstruction: "As the student to introduce themselves and share their background to personalize the learning experience.",
                             },
@@ -385,7 +414,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                     "Demonstrates understanding of the project's main goals and importance",
                                 ],
                                 deliverables: ["Project understanding summary"],
-                                primaryAgent: "Project Guide",
+                                primaryAgent: "Team Lead",
                                 isSubmissionRequired: false,
                                 agentInstruction: "Explain the project's goals and importance to the student. Go as far as giving a brief summary of the stakeholders involves, their names, and their roles in the project.",
                             },
@@ -400,7 +429,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                     "Shows understanding of team roles and the collaborative learning approach",
                                 ],
                                 deliverables: ["Team roles understanding"],
-                                primaryAgent: "Project Guide",
+                                primaryAgent: "Team Lead",
                                 isSubmissionRequired: false,
                                 agentInstruction: "Introduce the team members, their roles, and how they will support the student's learning journey.",
                             },
@@ -413,7 +442,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                 isCompleted: false,
                 taskNumber: 2,
                 name: "Stakeholder Identification & Analysis",
-                description: "Learn how to identify and analyze stakeholders for the EduConnect system",
+                description: "In this task, you will identify all the stakeholders (users) who will use or be affected by the system. You will also learn to categorize them into primary and secondary stakeholders and get to know their needs and influence on the project",
                 phase: "Requirements Discovery",
                 objective: "Understand who your stakeholders are and how they influence the project",
                 subtasks: [
@@ -422,13 +451,13 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                         isCompleted: false,
                         subtaskNumber: 1,
                         name: "Stakeholder Identification",
-                        description: "Learn to identify all the people and groups who will use or be affected by the system",
+                        description: "In this subtask, you will identify at least 6 stakeholders who will use or be affected by the system (the stakeholders). You will also learn to categorize them into primary and secondary stakeholders.",
                         steps: [
                             {
                                 id: "list_stakeholders",
                                 stepNumber: 1,
                                 step: "List all stakeholders",
-                                objective: "Create a simple list of all people and groups who will interact with or be affected by the EduConnect system",
+                                objective: "Create a simple list of at least 6 stakeholders who will interact with or be affected by the EduConnect system",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
@@ -443,7 +472,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 id: "categorize_stakeholders",
                                 stepNumber: 2,
                                 step: "Categorize stakeholders as primary or secondary",
-                                objective: "Sort your stakeholders into primary (direct users) and secondary (indirect users) groups",
+                                objective: "Remember the list you created earlier? Now, sort your stakeholders into primary (direct users) and secondary (indirect users) groups. You can always ask Sarah for help at any time.",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
@@ -461,38 +490,39 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                         isCompleted: false,
                         subtaskNumber: 2,
                         name: "Stakeholder Analysis",
-                        description: "Understand your stakeholders' needs and how much influence they have on the project",
+                        description: "In this subtask, you will analyze the stakeholders you identified earlier. You will learn to understand their needs, influence, and how they relate to each other.",
                         steps: [
                             {
                                 id: "stakeholder_needs",
                                 stepNumber: 1,
                                 step: "Identify stakeholder needs",
-                                objective: "List the main needs and concerns of each stakeholder group",
+                                objective: "For the students and lecturers, identify at least two specific needs and expectations from the EduConnect system",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
-                                    "Identifies at least one specific need for each stakeholder group",
+                                    "Identifies at least 2 specific needs for both stakeholder groups (students and lecturers)",
                                 ],
                                 deliverables: ["Stakeholder needs list"],
                                 primaryAgent: "Product Owner",
                                 isSubmissionRequired: true,
                                 responseFormatExample: "E.g. Students: access to resources, Lecturers: tools for teaching etc.",
                             },
-                            {
-                                id: "influence_interest_matrix",
-                                stepNumber: 2,
-                                step: "Create influence-interest matrix",
-                                objective: "Map stakeholders based on their influence and interest in the project",
-                                isCompleted: false,
-                                studentResponse: "",
-                                validationCriteria: [
-                                    "Places stakeholders in correct quadrants of influence-interest matrix with justification",
-                                ],
-                                deliverables: ["Influence-interest matrix"],
-                                primaryAgent: "Product Owner",
-                                isSubmissionRequired: true,
-                                responseFormatExample: "E.g. High Influence/High Interest: apples; Low Influence/High Interest: bananas"
-                            },
+                            // {
+                            //   id: "influence_interest_matrix",
+                            //   stepNumber: 2,
+                            //   step: "Create influence-interest matrix",
+                            //   objective:
+                            //     "You are expected to create a simple influence-interest matrix to portray how much influence and interest each stakeholder has in the project. You can always ask Sarah for help at any time.",
+                            //   isCompleted: false,
+                            //   studentResponse: "",
+                            //   validationCriteria: [
+                            //     "Places stakeholders in correct quadrants of influence-interest matrix with justification",
+                            //   ],
+                            //   deliverables: ["Influence-interest matrix"],
+                            //   primaryAgent: "Product Owner",
+                            //   isSubmissionRequired: true,
+                            //   responseFormatExample: "E.g. High Influence/High Interest: apples; Low Influence/High Interest: bananas"
+                            // },
                         ],
                     },
                 ],
@@ -502,16 +532,16 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                 isCompleted: false,
                 taskNumber: 3,
                 name: "Requirements Elicitation",
-                description: "Learn to gather requirements by talking to stakeholders and understanding their problems",
+                description: "In this task, you will learn to gather requirements by talking to stakeholders and understanding their problems",
                 phase: "Requirements Discovery",
-                objective: "Practice interviewing skills and problem identification",
+                objective: "Practice interviewing skills and problem identification with stakeholders (students and lecturers)",
                 subtasks: [
                     {
                         id: "conduct_interviews",
                         isCompleted: false,
                         subtaskNumber: 1,
                         name: "Conduct Stakeholder Interviews",
-                        description: "Interview different stakeholders to understand their problems and needs",
+                        description: "In this subtask, you will interview different stakeholders to understand their problems and needs",
                         steps: [
                             {
                                 id: "interview_student",
@@ -526,7 +556,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 deliverables: ["Student problems list"],
                                 primaryAgent: "Student",
                                 isSubmissionRequired: true,
-                                responseFormatExample: "E.g. Students: access to resources... etc.",
+                                responseFormatExample: "E.g. Access to resources..., lack of feedback... etc.",
                             },
                             {
                                 id: "interview_lecturer",
@@ -541,7 +571,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 deliverables: ["Lecturer problems list"],
                                 primaryAgent: "Lecturer",
                                 isSubmissionRequired: true,
-                                responseFormatExample: "E.g. Lecturers: lack of training, outdated materials... etc.",
+                                responseFormatExample: "E.g. Lack of training, outdated materials... etc.",
                             },
                         ],
                     },
@@ -550,17 +580,17 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                         isCompleted: false,
                         subtaskNumber: 2,
                         name: "Analyze Problems",
-                        description: "Look at the problems you found and understand what they mean for the system",
+                        description: "In this task, you will look at the problems you found and understand what they mean for the system",
                         steps: [
                             {
                                 id: "common_themes",
                                 stepNumber: 1,
                                 step: "Find common themes",
-                                objective: "Look for patterns and common problems across different stakeholder groups",
+                                objective: "Look for patterns and common problems across different stakeholder groups. You can always refer back to the interviews you conducted earlier or ask Lisa for help at any time.",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
-                                    "Identifies at least 2 common themes or problems that affect multiple stakeholder groups",
+                                    "Identifies at least 2 common themes or problems that affect students and lecturers",
                                 ],
                                 deliverables: ["Common themes list"],
                                 primaryAgent: "Business Analyst",
@@ -571,11 +601,11 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 id: "problem_impact",
                                 stepNumber: 2,
                                 step: "Assess problem impact",
-                                objective: "Understand which problems are most important to solve",
+                                objective: "Understand which problems are most important to solve. You need to talk to Lisa to get her insights on the impact of each problem.",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
-                                    "Ranks problems by impact and explains why certain problems are more critical",
+                                    "List at least 3 most important problems to solve",
                                 ],
                                 deliverables: ["Problem priority list"],
                                 primaryAgent: "Business Analyst",
@@ -591,7 +621,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                 isCompleted: false,
                 taskNumber: 4,
                 name: "Requirements Analysis & Prioritization",
-                description: "Learn to turn problems into clear requirements and decide which ones to work on first",
+                description: "Learn to turn problems into clear requirements and decide which ones to work on first using MoSCoW prioritization",
                 phase: "Requirements Analysis",
                 objective: "Practice creating and prioritizing requirements",
                 subtasks: [
@@ -600,28 +630,42 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                         isCompleted: false,
                         subtaskNumber: 1,
                         name: "Create Requirements",
-                        description: "Turn the problems you found into clear, specific requirements",
+                        description: "Turn the stakeholder problems into clear functional and non-functional requirements",
                         steps: [
                             {
                                 id: "functional_requirements",
                                 stepNumber: 1,
                                 step: "Write functional requirements",
-                                objective: "Create requirements that describe what the system should do",
+                                objective: "Come up with 5 functional requirements that describe what the system should do. You should talk with the tech lead, she knows all about these.",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
-                                    "Writes at least 4 clear functional requirements using simple language",
+                                    "Writes at least 5 clear functional requirements using simple language",
                                 ],
                                 deliverables: ["Functional requirements list"],
-                                primaryAgent: "Business Analyst",
+                                primaryAgent: "Technical Lead",
                                 isSubmissionRequired: true,
                                 responseFormatExample: "E.g. Functional Requirement 1: The system shall allow users to create an account; Functional Requirement 2: The system shall send a confirmation email upon registration.",
                             },
                             {
-                                id: "user_stories",
+                                id: "non_functional_requirements",
                                 stepNumber: 2,
+                                step: "Write non-functional requirements",
+                                objective: "Come up with 5 non-functional requirements that describe how the system should behave. You should talk with the tech lead, she knows all about these.",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "Writes at least 5 clear non-functional requirements using simple language",
+                                ],
+                                deliverables: ["Non-functional requirements list"],
+                                primaryAgent: "Technical Lead",
+                                isSubmissionRequired: true,
+                            },
+                            {
+                                id: "user_stories_student",
+                                stepNumber: 3,
                                 step: "Create user stories",
-                                objective: "Write user stories that describe features from the user's perspective",
+                                objective: "Write at least 3 user stories that describe features from the student's perspective. You should talk with David, the UX designer, to help you with this. Follow the format: As a [role], I want [goal] so that [benefit].",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
@@ -631,6 +675,21 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 primaryAgent: "UX Designer",
                                 isSubmissionRequired: true,
                                 responseFormatExample: "E.g. As a student, I want to access course materials so that I can study effectively.",
+                            },
+                            {
+                                id: "user_stories_teacher",
+                                stepNumber: 4,
+                                step: "Create user stories",
+                                objective: "Write user stories that describe features from the teacher's perspective. As always, you should talk with David, the UX designer, to help you with this. Follow the format: As a [role], I want [goal] so that [benefit].",
+                                isCompleted: false,
+                                studentResponse: "",
+                                validationCriteria: [
+                                    "Creates at least 3 user stories in the format: As a [role], I want [goal] so that [benefit]",
+                                ],
+                                deliverables: ["User stories list"],
+                                primaryAgent: "UX Designer",
+                                isSubmissionRequired: true,
+                                responseFormatExample: "E.g. As a teacher, I want to manage course materials so that I can provide students with up-to-date resources.",
                             },
                         ],
                     },
@@ -645,121 +704,128 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 id: "moscow_method",
                                 stepNumber: 1,
                                 step: "Use MoSCoW prioritization",
-                                objective: "Categorize requirements as Must have, Should have, Could have, or Won't have",
+                                objective: "Look back at the requirements you listed in the previous step and categorize at least 6 of them as Must have, Should have, Could have, or Won't have. You can always ask Lisa for help at any time.",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
                                     "Correctly categorizes at least 6 requirements using MoSCoW method with brief justification",
                                 ],
                                 deliverables: ["MoSCoW prioritization"],
-                                primaryAgent: "Product Owner",
+                                primaryAgent: "Business Analyst",
                                 isSubmissionRequired: true,
                                 responseFormatExample: "E.g. Must have: User authentication; Should have: Password reset; Could have: Social media login"
                             },
-                            {
-                                id: "final_priority_list",
-                                stepNumber: 2,
-                                step: "Create final priority list",
-                                objective: "Make a final ranked list of the most important requirements to implement",
-                                isCompleted: false,
-                                studentResponse: "",
-                                validationCriteria: [
-                                    "Creates a ranked list of top 5 requirements with clear business justification",
-                                ],
-                                deliverables: ["Final priority list"],
-                                primaryAgent: "Product Owner",
-                                isSubmissionRequired: true,
-                                responseFormatExample: "E.g. 1. User authentication - Must have; 2. Password reset - Should have; 3. Social media login - Could have"
-                            },
+                            // {
+                            //   id: "final_priority_list",
+                            //   stepNumber: 2,
+                            //   step: "Create final priority list",
+                            //   objective:
+                            //     "Make a final ranked list of the most important requirements to implement",
+                            //   isCompleted: false,
+                            //   studentResponse: "",
+                            //   validationCriteria: [
+                            //     "Creates a ranked list of top 5 requirements with clear business justification",
+                            //   ],
+                            //   deliverables: ["Final priority list"],
+                            //   primaryAgent: "Product Owner",
+                            //   isSubmissionRequired: true,
+                            //   responseFormatExample: "E.g. 1. User authentication - Must have; 2. Password reset - Should have; 3. Social media login - Could have"
+                            // },
                         ],
                     },
                 ],
             },
-            {
-                id: "requirements_validation_documentation",
-                isCompleted: false,
-                taskNumber: 5,
-                name: "Requirements Validation & Documentation",
-                description: "Learn to validate your requirements with stakeholders and document them clearly",
-                phase: "Requirements Validation",
-                objective: "Ensure requirements are correct and properly documented",
-                subtasks: [
-                    {
-                        id: "validate_requirements",
-                        isCompleted: false,
-                        subtaskNumber: 1,
-                        name: "Validate Requirements",
-                        description: "Check with stakeholders that your requirements are correct and complete",
-                        steps: [
-                            {
-                                id: "stakeholder_review",
-                                stepNumber: 1,
-                                step: "Get stakeholder feedback",
-                                objective: "Present your requirements to stakeholders and get their feedback",
-                                isCompleted: false,
-                                studentResponse: "",
-                                validationCriteria: [
-                                    "Presents requirements to at least 2 stakeholders and documents their feedback",
-                                ],
-                                deliverables: ["Stakeholder feedback report"],
-                                primaryAgent: "Product Owner",
-                                isSubmissionRequired: true,
-                            },
-                            {
-                                id: "resolve_feedback",
-                                stepNumber: 2,
-                                step: "Resolve stakeholder feedback",
-                                objective: "Update requirements based on stakeholder feedback",
-                                isCompleted: false,
-                                studentResponse: "",
-                                validationCriteria: [
-                                    "Updates at least 2 requirements based on stakeholder feedback with clear justification",
-                                ],
-                                deliverables: ["Updated requirements list"],
-                                primaryAgent: "Business Analyst",
-                                isSubmissionRequired: true,
-                            },
-                        ],
-                    },
-                    {
-                        id: "document_requirements",
-                        isCompleted: false,
-                        subtaskNumber: 2,
-                        name: "Document Requirements",
-                        description: "Create clear documentation that the development team can use",
-                        steps: [
-                            {
-                                id: "requirements_specification",
-                                stepNumber: 1,
-                                step: "Write requirements specification",
-                                objective: "Create a clear document that describes each requirement in detail",
-                                isCompleted: false,
-                                studentResponse: "",
-                                validationCriteria: [
-                                    "Documents at least 5 requirements with clear description, acceptance criteria, and priority",
-                                ],
-                                deliverables: ["Requirements specification document"],
-                                primaryAgent: "Business Analyst",
-                                isSubmissionRequired: true,
-                            },
-                            {
-                                id: "acceptance_criteria",
-                                stepNumber: 2,
-                                step: "Define acceptance criteria",
-                                objective: "Specify how the team will know when each requirement is complete",
-                                isCompleted: false,
-                                studentResponse: "",
-                                validationCriteria: [
-                                    "Creates testable acceptance criteria for at least 3 requirements",
-                                ],
-                                deliverables: ["Acceptance criteria document"],
-                                primaryAgent: "QA Engineer",
-                                isSubmissionRequired: true,
-                            },
-                        ],
-                    },
-                ],
-            },
+            // {
+            //   id: "requirements_validation_documentation",
+            //   isCompleted: false,
+            //   taskNumber: 5,
+            //   name: "Requirements Validation & Documentation",
+            //   description:
+            //     "Learn to validate your requirements with stakeholders and document them clearly",
+            //   phase: "Requirements Validation",
+            //   objective: "Ensure requirements are correct and properly documented",
+            //   subtasks: [
+            //     {
+            //       id: "validate_requirements",
+            //       isCompleted: false,
+            //       subtaskNumber: 1,
+            //       name: "Validate Requirements",
+            //       description:
+            //         "Check with stakeholders that your requirements are correct and complete",
+            //       steps: [
+            //         {
+            //           id: "stakeholder_review",
+            //           stepNumber: 1,
+            //           step: "Get stakeholder feedback",
+            //           objective:
+            //             "Present your requirements to stakeholders and get their feedback",
+            //           isCompleted: false,
+            //           studentResponse: "",
+            //           validationCriteria: [
+            //             "Presents requirements to at least 2 stakeholders and documents their feedback",
+            //           ],
+            //           deliverables: ["Stakeholder feedback report"],
+            //           primaryAgent: "Product Owner",
+            //           isSubmissionRequired: true,
+            //         },
+            //         {
+            //           id: "resolve_feedback",
+            //           stepNumber: 2,
+            //           step: "Resolve stakeholder feedback",
+            //           objective: "Update requirements based on stakeholder feedback",
+            //           isCompleted: false,
+            //           studentResponse: "",
+            //           validationCriteria: [
+            //             "Updates at least 2 requirements based on stakeholder feedback with clear justification",
+            //           ],
+            //           deliverables: ["Updated requirements list"],
+            //           primaryAgent: "Business Analyst",
+            //           isSubmissionRequired: true,
+            //         },
+            //       ],
+            //     },
+            //     {
+            //       id: "document_requirements",
+            //       isCompleted: false,
+            //       subtaskNumber: 2,
+            //       name: "Document Requirements",
+            //       description:
+            //         "Create clear documentation that the development team can use",
+            //       steps: [
+            //         {
+            //           id: "requirements_specification",
+            //           stepNumber: 1,
+            //           step: "Write requirements specification",
+            //           objective:
+            //             "Create a clear document that describes each requirement in detail",
+            //           isCompleted: false,
+            //           studentResponse: "",
+            //           validationCriteria: [
+            //             "Documents at least 5 requirements with clear description, acceptance criteria, and priority",
+            //           ],
+            //           deliverables: ["Requirements specification document"],
+            //           primaryAgent: "Business Analyst",
+            //           isSubmissionRequired: true,
+            //         },
+            //         {
+            //           id: "acceptance_criteria",
+            //           stepNumber: 2,
+            //           step: "Define acceptance criteria",
+            //           objective:
+            //             "Specify how the team will know when each requirement is complete",
+            //           isCompleted: false,
+            //           studentResponse: "",
+            //           validationCriteria: [
+            //             "Creates testable acceptance criteria for at least 3 requirements",
+            //           ],
+            //           deliverables: ["Acceptance criteria document"],
+            //           primaryAgent: "QA Engineer",
+            //           isSubmissionRequired: true,
+            //         },
+            //       ],
+            //     },
+            //   ],
+            // },
         ];
     }
     getTeamMembersList() {

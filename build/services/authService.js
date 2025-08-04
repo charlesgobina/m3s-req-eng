@@ -1,5 +1,31 @@
 import { auth, db } from '../config/adminConfig.js';
 export class AuthService {
+    // Singleton instance
+    static instance = null;
+    constructor() {
+        console.log("🔧 AuthService: Singleton instance created");
+    }
+    /**
+     * Get singleton instance of AuthService
+     * This prevents multiple instances and reduces memory usage
+     */
+    static getInstance() {
+        if (!AuthService.instance) {
+            console.log("🏗️ Creating new AuthService singleton instance...");
+            AuthService.instance = new AuthService();
+        }
+        else {
+            console.log("♻️ Reusing existing AuthService singleton instance");
+        }
+        return AuthService.instance;
+    }
+    /**
+     * Reset singleton instance (useful for testing)
+     */
+    static resetInstance() {
+        AuthService.instance = null;
+        console.log("🗑️ AuthService singleton instance reset");
+    }
     async signup(userData) {
         try {
             // Create user in Firebase Auth
