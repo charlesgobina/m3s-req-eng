@@ -51,11 +51,11 @@ export class VectorMemoryService {
   private isRedisInitialized: boolean = false;
 
   constructor(questionModel: ChatOpenAI | ChatGroq | ChatGoogleGenerativeAI | HuggingFaceInference) {
-    // this.embeddings = new OpenAIEmbeddings({ 
-    //   apiKey: process.env.OPENAI_API_KEY as string 
-    // });
+    this.embeddings = new OpenAIEmbeddings({ 
+      apiKey: process.env.OPENAI_API_KEY as string 
+    });
 
-    this.embeddings = transformerEmbeddings;
+    // this.embeddings = transformerEmbeddings;
 
     this.supabaseClient = createClient(
       process.env.SUPABASE_URL as string, 
