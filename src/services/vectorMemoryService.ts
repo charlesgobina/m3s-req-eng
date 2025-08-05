@@ -1,6 +1,6 @@
 import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase';
 import { OpenAIEmbeddings } from '@langchain/openai';
-import {transformerEmbeddings} from '../utils/transformerEmbeddings.js';
+// import {transformerEmbeddings} from '../utils/transformerEmbeddings.js';
 import { createClient } from '@supabase/supabase-js';
 import { Document } from '@langchain/core/documents';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
@@ -11,7 +11,7 @@ import { ChatGroq } from "@langchain/groq";
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 import { HuggingFaceInference } from "@langchain/community/llms/hf";
 import dotenv from 'dotenv';
-import TransformerEmbeddings from '../utils/transformerEmbeddings.js';
+// import TransformerEmbeddings from '../utils/transformerEmbeddings.js';
 
 dotenv.config();
 
@@ -41,7 +41,7 @@ interface ComprehensiveUserData {
 }
 
 export class VectorMemoryService {
-  private embeddings: OpenAIEmbeddings | TransformerEmbeddings;
+  private embeddings: OpenAIEmbeddings;
   private supabaseClient: any;
   // REMOVED: private userDataCache: Map<string, ComprehensiveUserData> = new Map();
   // Now using Redis for user data cache to prevent memory leaks
