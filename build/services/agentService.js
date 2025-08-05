@@ -547,7 +547,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 id: "interview_student",
                                 stepNumber: 1,
                                 step: "Interview a student",
-                                objective: "Talk to the student agent to understand student problems with current learning systems",
+                                objective: "Talk to the student agent to understand student problems with current learning systems. Identifies at least 2 specific problems students face with current systems",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
@@ -562,7 +562,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 id: "interview_lecturer",
                                 stepNumber: 2,
                                 step: "Interview a lecturer",
-                                objective: "Talk to the lecturer agent to understand lecturer challenges in teaching",
+                                objective: "Talk to the lecturer agent to understand lecturer challenges in teaching. Identifies at least 2 specific challenges lecturers face in their teaching work",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
@@ -586,7 +586,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 id: "common_themes",
                                 stepNumber: 1,
                                 step: "Find common themes",
-                                objective: "Look for patterns and common problems across different stakeholder groups. You can always refer back to the interviews you conducted earlier or ask Lisa for help at any time.",
+                                objective: "Look for patterns and common problems across different stakeholder groups. You can always refer back to the interviews you conducted earlier or ask Lisa for help at any time. Identifies at least 2 common themes or problems that affect students and lecturers",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
@@ -601,7 +601,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 id: "problem_impact",
                                 stepNumber: 2,
                                 step: "Assess problem impact",
-                                objective: "Understand which problems are most important to solve. You need to talk to Lisa to get her insights on the impact of each problem.",
+                                objective: "Understand which problems are most important to solve. You need to talk to Lisa to get her insights on the impact of each problem. List at least 3 most important problems to solve",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
@@ -680,7 +680,7 @@ Your ultimate goal is to provide a realistic, supportive, and effective learning
                                 id: "user_stories_teacher",
                                 stepNumber: 4,
                                 step: "Create user stories",
-                                objective: "Write user stories that describe features from the teacher's perspective. As always, you should talk with David, the UX designer, to help you with this. Follow the format: As a [role], I want [goal] so that [benefit].",
+                                objective: "Write 3 user stories that describe features from the teacher's perspective. As always, you should talk with David, the UX designer, to help you with this. Follow the format: As a [role], I want [goal] so that [benefit].",
                                 isCompleted: false,
                                 studentResponse: "",
                                 validationCriteria: [
