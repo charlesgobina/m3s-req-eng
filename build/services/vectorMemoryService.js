@@ -1,9 +1,11 @@
-import { transformerEmbeddings } from '../utils/transformerEmbeddings.js';
+import { OpenAIEmbeddings } from '@langchain/openai';
+// import {transformerEmbeddings} from '../utils/transformerEmbeddings.js';
 import { createClient } from '@supabase/supabase-js';
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter';
 import { db } from '../config/adminConfig.js';
 import { redisMemoryService } from './redisMemoryService.js';
 import dotenv from 'dotenv';
+// import TransformerEmbeddings from '../utils/transformerEmbeddings.js';
 dotenv.config();
 export class VectorMemoryService {
     embeddings;
@@ -15,10 +17,10 @@ export class VectorMemoryService {
     maxTokenLimit = 2000; // Using existing token limit
     isRedisInitialized = false;
     constructor(questionModel) {
-        // this.embeddings = new OpenAIEmbeddings({ 
-        //   apiKey: process.env.OPENAI_API_KEY as string 
-        // });
-        this.embeddings = transformerEmbeddings;
+        this.embeddings = new OpenAIEmbeddings({
+            apiKey: process.env.OPENAI_API_KEY
+        });
+        // this.embeddings = transformerEmbeddings;
         this.supabaseClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_API_KEY);
         this.questionModel = questionModel;
         this.textSplitter = new RecursiveCharacterTextSplitter({
