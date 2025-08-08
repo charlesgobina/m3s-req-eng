@@ -6,6 +6,7 @@ import { taskRouter } from './routes/taskRoutes.js';
 import { validationRouter } from './routes/validationRoutes.js';
 import { contextRouter } from './routes/contextRoutes.js';
 import { authRouter } from './routes/authRoutes.js';
+import passwordResetRouter from './routes/passwordResetRoutes.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { chatService } from './services/chatService.js';
@@ -33,6 +34,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(requestLogger);
 // Routes
 app.use('/api/auth', authRouter); // Authentication routes
+app.use('/api/password-reset', passwordResetRouter); // Password recovery routes
 app.use('/api/chat', chatRouter);
 app.use('/api/tasks', taskRouter);
 app.use('/api/validation', validationRouter);

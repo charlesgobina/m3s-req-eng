@@ -222,4 +222,99 @@ export class AuthService {
             throw new Error(`Failed to delete user: ${error.message}`);
         }
     }
+    async sendPasswordResetEmail(email) {
+        try {
+            const apiKey = process.env.FIREBASE_API_KEY;
+            if (!apiKey) {
+                throw new Error('Firebase API key not configured');
+            }
+            const resetUrl = `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`;
+            const response = await fetch(resetUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    requestType: 'PASSWORD_RESET',
+                    email: email,
+                }),
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                if (result.error?.message?.includes('EMAIL_NOT_FOUND')) {
+                    throw new Error('email-not-found');
+                }
+                throw new Error(result.error?.message || 'Failed to send password reset email');
+            }
+            console.log('Password reset email sent successfully');
+        }
+        catch (error) {
+            throw new Error(`Password reset failed: ${error.message}`);
+        }
+    }
+    async confirmPasswordReset(oobCode, newPassword) {
+        try {
+            const apiKey = process.env.FIREBASE_API_KEY;
+            if (!apiKey) {
+                throw new Error('Firebase API key not configured');
+            }
+            const resetUrl = `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${apiKey}`;
+            const response = await fetch(resetUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    oobCode: oobCode,
+                    newPassword: newPassword,
+                }),
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                if (result.error?.message?.includes('INVALID_OOB_CODE')) {
+                    throw new Error('invalid-reset-code');
+                }
+                if (result.error?.message?.includes('EXPIRED_OOB_CODE')) {
+                    throw new Error('expired-reset-code');
+                }
+                throw new Error(result.error?.message || 'Failed to reset password');
+            }
+            console.log('Password reset successfully');
+        }
+        catch (error) {
+            throw new Error(`Password reset confirmation failed: ${error.message}`);
+        }
+    }
+    async verifyPasswordResetCode(oobCode) {
+        try {
+            const apiKey = process.env.FIREBASE_API_KEY;
+            if (!apiKey) {
+                throw new Error('Firebase API key not configured');
+            }
+            const verifyUrl = `https://identitytoolkit.googleapis.com/v1/accounts:resetPassword?key=${apiKey}`;
+            const response = await fetch(verifyUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    oobCode: oobCode,
+                }),
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                if (result.error?.message?.includes('INVALID_OOB_CODE')) {
+                    throw new Error('invalid-reset-code');
+                }
+                if (result.error?.message?.includes('EXPIRED_OOB_CODE')) {
+                    throw new Error('expired-reset-code');
+                }
+                throw new Error(result.error?.message || 'Failed to verify reset code');
+            }
+            return result.email;
+        }
+        catch (error) {
+            throw new Error(`Password reset code verification failed: ${error.message}`);
+        }
+    }
 }
